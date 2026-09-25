@@ -1,0 +1,15 @@
+.git
+.github
+.env*
+.kamal
+work
+outputs
+node_modules
+.nuxt
+.output
+test-results
+playwright-report
+tests
+docs
+*.log
+.DS_Store

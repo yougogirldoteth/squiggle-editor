@@ -2,7 +2,7 @@
 
 A single-screen Nuxt editor for exploring the Chromie Squiggle algorithm by Snowfro. Shape the curve, choose a texture, and change its colors; every artwork edit stays representable by its 32-byte hash. The responsive interface supports mouse, touch, and keyboard input. Type thumbnails render actual collection pieces from locally bundled canonical hashes.
 
-This is an independent local project, with no backend, wallet connection, or deployment service. See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and rendering provenance.
+This is an independent, stateless project with no database or wallet connection. See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and rendering provenance.
 
 ## Run locally
 
@@ -67,3 +67,4 @@ The original algorithm uses evenly spaced horizontal control points and byte-der
 The hash contains the artwork's geometry and traits. Background, speed, animation state, animation phase, and viewport size are separate view settings. Importing the exported hash reconstructs the same artwork at the same viewport and view settings; opening a URL starts at phase zero. Resizing fits the original 3:2 drawing area inside the available canvas. Animation timing is normalized to elapsed time rather than depending on display refresh rate.
 
 The renderer follows the original algorithm served by Art Blocks, including its sampling and random-number quirks. It uses native Canvas rather than the original p5 runtime. Browser rasterization, antialiasing, and device pixel ratios can differ, so this project does not claim pixel-identical output across renderers or devices. An edited hash is an algorithmic study, not a newly minted Chromie Squiggle token.
+
