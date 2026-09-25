@@ -109,7 +109,7 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
   --hash-height: 32px;
   --hash-padding: 0;
 }
-.hash-bar { position: relative; width: 100%; max-width: 1120px; padding: var(--space-3) 40px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.hash-bar { position: relative; width: calc(66ch + 84px); max-width: 100%; padding: var(--space-3) 40px; border: 1px solid var(--line); border-radius: 16px; background: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--hash-font-size); }
 .hash-bar:focus-within { border-color: #9cab8d; outline: 2px solid #9cab8d55; outline-offset: 2px; }
 .hash-bar.invalid { border-color: #c17566; }
 .hash-action { position: absolute; top: 50%; right: var(--space-1); transform: translateY(-50%); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: #78816f; }
