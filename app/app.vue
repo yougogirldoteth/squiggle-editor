@@ -88,7 +88,7 @@ function share() {
 }
 function shortcut(event: KeyboardEvent) {
   const target = event.target as HTMLElement
-  if (target instanceof HTMLInputElement && target.type !== 'range') return
+  if (target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && target.type !== 'range')) return
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault()
     event.shiftKey ? redo() : undo()
@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="editor">
     <header class="masthead">
-      <div class="brand"><img src="/favicon.svg" alt="" width="34" height="34"><h1>Squiggle <span>Editor</span></h1></div>
+      <div class="brand"><h1>Squiggle <span>Editor</span></h1></div>
       <div class="header-actions">
         <div class="history-actions">
           <button class="icon-button" aria-label="Undo" title="Undo (⌘/Ctrl Z)" :disabled="!history.canUndo" @click="undo"><EditorIcon name="undo" /></button>
@@ -139,7 +139,6 @@ onBeforeUnmount(() => {
           <TypePreview :type="type" /><span>{{ type }}</span><span class="selected-dot" aria-hidden="true" />
         </button>
       </div>
-      <div class="type-bottom"><span class="mini-dot" /><span>Made of color.</span></div>
     </aside>
 
     <section class="controls-area" aria-label="Editor controls">
@@ -155,7 +154,7 @@ onBeforeUnmount(() => {
       </div>
       </div>
       <div v-show="activeTab === 'Shape'" id="panel-Shape" class="tab-controls shape-controls" role="tabpanel" aria-labelledby="tab-Shape">
-        <EditorRange id="length" label="Length" :value="traits.bytes[26]!" :display="traits.segments.toFixed(2)" title="Original segment count, with full byte precision" @start="history.begin()" @change="byte(26, $event)" @end="history.commit()" />
+        <EditorRange id="length" label="Length" :value="traits.bytes[26]!" :display="traits.segments.toFixed(2)" title="Curve length" @start="history.begin()" @change="byte(26, $event)" @end="history.commit()" />
         <EditorRange id="height" label="Height" :value="255 - traits.bytes[27]!" :display="`${Math.round(400 / traits.ht)}%`" title="Curve height; taller to the right" @start="history.begin()" @change="byte(27, 255 - $event)" @end="history.commit()" />
         <div class="range-control point-control">
           <div class="point-heading"><label for="point-height">Point</label><span class="point-stepper"><button aria-label="Previous point" :disabled="selectedPoint === 0" @click="selectedPoint--">‹</button><output>{{ selectedPoint + 1 }}<span>/{{ pointCount }}</span></output><button aria-label="Next point" :disabled="selectedPoint === pointCount - 1" @click="selectedPoint++">›</button></span></div>
@@ -176,7 +175,6 @@ onBeforeUnmount(() => {
     </section>
 
     <main class="stage" :style="{ background }">
-      <div class="stage-label" :class="{ 'on-dark': backgroundIndex > 5 }"><span class="mini-dot" />{{ traits.type }}<span v-if="traits.hyper"> / Hyper</span></div>
       <SquiggleCanvas ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="history.begin(); dragging = true" @gesture-end="history.commit(); dragging = false" />
       <div class="canvas-tools">
         <div class="play-tools">
@@ -191,14 +189,17 @@ onBeforeUnmount(() => {
 
     <footer class="hash-bar">
       <div class="hash-field">
-        <label for="hash">HASH <span v-if="hashError" class="hash-error" role="alert">{{ hashError }}</span></label>
-        <div class="hash-input-row">
-          <input id="hash" v-model="hashDraft" aria-label="Artwork hash" :aria-invalid="!!hashError" spellcheck="false" autocapitalize="off" autocomplete="off" @keydown.enter="importHash" @input="hashError = ''">
-          <button v-if="hashDraft !== hash" class="load-button" title="Load hash" @click="importHash">Load<EditorIcon name="arrow" /></button>
-          <button class="icon-button" aria-label="Copy hash" title="Copy hash" @click="copy(hash, 'Hash copied')"><EditorIcon name="copy" /></button>
+        <div class="hash-header">
+          <label for="hash" :class="{ invalid: hashError }">{{ hashError ? 'Invalid hash' : 'Artwork hash' }}</label>
+          <div class="hash-actions">
+            <button v-if="hashDraft !== hash" class="load-button" title="Load hash" @click="importHash">Load<EditorIcon name="arrow" /></button>
+            <button class="hash-action" aria-label="Copy hash" title="Copy hash" @click="copy(hash, 'Hash copied')"><EditorIcon name="copy" /><span>Copy</span></button>
+            <button class="hash-action" title="Copy a link to this squiggle" @click="share"><EditorIcon name="link" /><span>Share</span></button>
+          </div>
         </div>
+        <textarea id="hash" v-model="hashDraft" rows="2" aria-label="Artwork hash" :aria-invalid="!!hashError" :aria-describedby="hashError ? 'hash-error' : undefined" spellcheck="false" autocapitalize="off" autocomplete="off" @keydown.enter.prevent="importHash" @input="hashError = ''" />
+        <span v-if="hashError" id="hash-error" class="sr-only" role="alert">{{ hashError }}</span>
       </div>
-      <button class="share-button" title="Copy a link to this squiggle" @click="share"><EditorIcon name="link" /><span>Share</span></button>
       <div class="attribution">Chromie Squiggle by <a href="https://www.snowfro.com/projects/chromie-squiggle" target="_blank" rel="noopener noreferrer">Snowfro ↗</a><span>Independent editor</span></div>
     </footer>
     <div class="toast" role="status" aria-live="polite" :class="{ visible: notice }">{{ notice }}</div>

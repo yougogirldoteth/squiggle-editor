@@ -19,6 +19,21 @@ d6e475f342854bcc8424867a97965e1bca31b79971c71a21456d8c1a9b230390
 
 This identifies the retrieved script, excluding its HTML template, token data, and p5 library. The reference was fetched from Art Blocks' generator; it was not independently recovered from an Ethereum node for this project.
 
+### Collection examples
+
+The six type thumbnails depict existing collection tokens, using hashes and type labels verified against first-party Art Blocks metadata on September 25, 2026:
+
+| Type | Token and source |
+| --- | --- |
+| Normal | [Chromie Squiggle #0](https://token.artblocks.io/0) |
+| Bold | [Chromie Squiggle #20](https://token.artblocks.io/20) |
+| Slinky | [Chromie Squiggle #5](https://token.artblocks.io/5) |
+| Ribbed | [Chromie Squiggle #10](https://token.artblocks.io/10) |
+| Pipe | [Chromie Squiggle #74](https://token.artblocks.io/74) |
+| Fuzzy | [Chromie Squiggle #7](https://token.artblocks.io/7) |
+
+The hashes are bundled in `app/utils/examples.ts` and decoded with the editor's original trait rules. Thumbnails are rendered locally with the same renderer as the artwork, at animation phase zero, then cropped to their visible bounds and uniformly scaled to fit. Their curve shapes, colors, and textures are not replaced by illustrative paths. No external image request is needed at runtime. Selecting a type changes the current artwork's style; it does not import the example token's hash.
+
 ### Algorithm and rendering scope
 
 The adaptation preserves hash decoding, type precedence, fractional segment counts, Catmull–Rom geometry, inclusive sample loops, endpoint conditions, hue calculations, and the original seeded Fuzzy distribution. Fuzzy uses the original JavaScript seed conversion and signed bitwise shifts, restarts the random sequence per segment, and makes its third random draw only when the distance test passes.
