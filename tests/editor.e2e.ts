@@ -17,7 +17,7 @@ function watchErrors(page: Page) {
   return errors
 }
 
-const artworkHash = (page: Page) => page.getByRole('textbox', { name: 'Artwork hash' })
+const artworkHash = (page: Page) => page.getByRole('textbox', { name: 'Hash' })
 const artwork = (page: Page) => page.getByRole('application', { name: 'Squiggle canvas' })
 
 async function openEditor(page: Page) {
@@ -29,6 +29,34 @@ async function openEditor(page: Page) {
 
 async function settleCanvas(page: Page) {
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+}
+
+async function beginHueRoll(page: Page, value: number) {
+  return page.getByRole('slider', { name: 'Starting hue' }).evaluate(async (element, nextValue) => {
+    const input = element as HTMLInputElement
+    input.value = String(nextValue)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await Promise.resolve()
+    const nativeValue = (document.getElementById('hash') as HTMLTextAreaElement).value
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    const root = document.querySelector('.hash-input')!
+    const slots = Array.from(root.querySelectorAll('.hash-input__slot'))
+    const animations = root.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running' || animation.pending)
+    const animatedSlots = [...new Set(animations.map(animation => {
+      const target = (animation.effect as KeyframeEffect).target as Element
+      return slots.indexOf(target.closest('.hash-input__slot')!)
+    }))].sort((a, b) => a - b)
+    // Inspect the actual in-flight roll without relying on driver timing versus
+    // a short CSS duration. Focusing the field cancels these paused animations.
+    animations.forEach(animation => animation.pause())
+    return {
+      nativeValue,
+      currentText: slots.map(slot => slot.querySelector('.hash-input__current')!.textContent).join(''),
+      rollingSlots: slots.flatMap((slot, index) => slot.classList.contains('is-rolling') ? [index] : []),
+      animatedSlots,
+      animationCount: animations.length,
+    }
+  }, value)
 }
 
 async function curvePosition(page: Page) {
@@ -95,6 +123,8 @@ test('essential controls fit desktop, narrow phones, and phone landscape without
   await mkdir('work', { recursive: true })
   for (const viewport of [
     { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 768, height: 768 },
     { width: 390, height: 844 },
     { width: 320, height: 568 },
     { width: 844, height: 390 },
@@ -111,7 +141,6 @@ test('essential controls fit desktop, narrow phones, and phone landscape without
     for (const name of ['Reverse', 'Hyper', 'Copy hash', 'Export PNG', 'Play animation', 'Reset squiggle', 'White background', 'Gray background', 'Dark background']) {
       await expect(page.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 })
     }
-    await expect(page.getByTitle('Copy a link to this squiggle')).toBeInViewport({ ratio: 1 })
     await expect(artworkHash(page)).toBeInViewport({ ratio: 1 })
     const hashField = await artworkHash(page).evaluate(element => ({
       length: (element as HTMLInputElement | HTMLTextAreaElement).value.length,
@@ -121,6 +150,34 @@ test('essential controls fit desktop, narrow phones, and phone landscape without
     expect(hashField.length).toBe(66)
     expect(hashField.overflowX, 'Every hash character fits horizontally').toBeLessThanOrEqual(1)
     expect(hashField.overflowY, 'Every hash line fits vertically').toBeLessThanOrEqual(1)
+    await expect(page.locator('footer')).toHaveCount(0)
+    await expect(page.getByRole('contentinfo')).toHaveCount(0)
+    const hashBounds = (await page.locator('.hash-section').boundingBox())!
+    const controlsBounds = (await page.getByRole('region', { name: 'Editor controls' }).boundingBox())!
+    const canvasBounds = (await artwork(page).boundingBox())!
+    expect(hashBounds.y + hashBounds.height, 'Hash appears above the parameter controls').toBeLessThanOrEqual(controlsBounds.y + 1)
+    expect(hashBounds.y + hashBounds.height, 'Hash appears above the artwork').toBeLessThanOrEqual(canvasBounds.y + 1)
+    const overlay = page.locator('.hash-input__overlay')
+    await expect(overlay).toBeVisible()
+    const visualHash = await overlay.evaluate(element => {
+      const bounds = element.getBoundingClientRect()
+      const slots = Array.from(element.querySelectorAll('.hash-input__slot'))
+      return {
+        value: slots.map(slot => slot.querySelector('.hash-input__current')!.textContent).join(''),
+        clipped: slots.flatMap((slot, index) => {
+          const rect = slot.getBoundingClientRect()
+          return rect.left < bounds.left - 1 || rect.right > bounds.right + 1 || rect.top < bounds.top - 1 || rect.bottom > bounds.bottom + 1 ? [index] : []
+        }),
+      }
+    })
+    expect(visualHash.value).toBe(DEFAULT_HASH)
+    expect(visualHash.clipped, 'Every animated hash character fits its field').toEqual([])
+    if (viewport.width > 650) {
+      const heading = (await page.locator('.type-heading').boundingBox())!
+      const tabs = (await page.getByRole('tablist', { name: 'Parameters' }).boundingBox())!
+      expect(Math.abs(heading.y - tabs.y), 'Type and Parameters start on the same row').toBeLessThanOrEqual(1)
+      expect(Math.abs(heading.height - tabs.height), 'Type and Parameters have aligned baselines').toBeLessThanOrEqual(1)
+    }
     await expect.poll(async () => page.getByRole('complementary', { name: 'Squiggle type' }).locator('canvas.type-preview').evaluateAll(elements => elements.map(element => {
       const preview = element as HTMLCanvasElement
       const data = preview.getContext('2d')!.getImageData(0, 0, preview.width, preview.height).data
@@ -159,6 +216,120 @@ test('essential controls fit desktop, narrow phones, and phone landscape without
   }
 })
 
+test('hash rolling animates only changed characters while the native value updates immediately', async ({ page }) => {
+  await openEditor(page)
+  const hue = decodeHash(DEFAULT_HASH).bytes[29]! + 1
+  const expected = setByte(DEFAULT_HASH, 29, hue)
+  const changedCharacters = Array.from(expected).flatMap((character, index) => character === DEFAULT_HASH[index] ? [] : [index])
+  const roll = await beginHueRoll(page, hue)
+  expect(roll.nativeValue).toBe(expected)
+  expect(roll.currentText).toBe(expected)
+  expect(roll.rollingSlots).toEqual(changedCharacters)
+  expect(roll.animatedSlots).toEqual(changedCharacters)
+  expect(roll.animationCount).toBe(changedCharacters.length * 2)
+  await artworkHash(page).focus()
+})
+
+test('hash rolling rapid changes keep the latest value without queued old rolls', async ({ page }) => {
+  await openEditor(page)
+  const values = [110, 251, 172, 33]
+  const result = await page.getByRole('slider', { name: 'Starting hue' }).evaluate(async (element, nextValues) => {
+    const input = element as HTMLInputElement
+    const native = document.getElementById('hash') as HTMLTextAreaElement
+    const root = document.querySelector('.hash-input')!
+    const frames: { native: string; visual: string; active: number }[] = []
+    for (const value of nextValues) {
+      input.value = String(value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await Promise.resolve()
+      frames.push({
+        native: native.value,
+        visual: Array.from(root.querySelectorAll('.hash-input__current'), node => node.textContent).join(''),
+        active: root.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running' || animation.pending).length,
+      })
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    }
+    await Promise.all(root.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => undefined)))
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    return {
+      frames,
+      native: native.value,
+      visual: Array.from(root.querySelectorAll('.hash-input__current'), node => node.textContent).join(''),
+      active: root.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running' || animation.pending).length,
+      opacity: Array.from(root.querySelectorAll('.hash-input__current'), node => getComputedStyle(node).opacity),
+    }
+  }, values)
+  result.frames.forEach((frame, index) => {
+    const expected = setByte(DEFAULT_HASH, 29, values[index]!)
+    expect(frame.native).toBe(expected)
+    expect(frame.visual).toBe(expected)
+    expect(frame.active, 'At most two changing hex digits have an outgoing and incoming glyph').toBeLessThanOrEqual(4)
+  })
+  const latest = setByte(DEFAULT_HASH, 29, values.at(-1)!)
+  expect(result.native).toBe(latest)
+  expect(result.visual).toBe(latest)
+  expect(result.active).toBe(0)
+  expect(result.opacity.every(opacity => opacity === '1')).toBe(true)
+})
+
+test('hash rolling stops while focusing, typing, and importing through the native field', async ({ page }) => {
+  await openEditor(page)
+  const roll = await beginHueRoll(page, 106)
+  expect(roll.animationCount).toBeGreaterThan(0)
+  await artworkHash(page).focus()
+  await expect(page.locator('.hash-input__overlay')).toHaveCount(0)
+  expect(await page.locator('.hash-input').evaluate(element => element.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running' || animation.pending).length)).toBe(0)
+  const imported = setByte(DEFAULT_HASH, 9, 73)
+  await artworkHash(page).fill(imported)
+  await expect(artworkHash(page)).toHaveValue(imported)
+  await expect(page.locator('.hash-input__overlay')).toHaveCount(0)
+  await artworkHash(page).press('Enter')
+  await expect(artworkHash(page)).toHaveValue(imported)
+  await expect(artworkHash(page)).toHaveAttribute('aria-invalid', 'false')
+  await expect(page.locator('.hash-input__overlay')).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Color', exact: true }).focus()
+  await expect(page.locator('.hash-input__overlay')).toBeVisible()
+  expect(await page.locator('.hash-input__current').allTextContents()).toEqual(Array.from(imported))
+  expect(await page.locator('.hash-input').evaluate(element => element.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running' || animation.pending).length)).toBe(0)
+})
+
+test('hash rolling respects reduced motion and keeps native editing available', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await openEditor(page)
+  await page.getByRole('slider', { name: 'Starting hue' }).press('End')
+  await expect(artworkHash(page)).toHaveValue(setByte(DEFAULT_HASH, 29, 255))
+  await expect(page.locator('.hash-input__overlay')).toHaveCount(0)
+  const nativeState = await artworkHash(page).evaluate(element => ({
+    color: getComputedStyle(element).color,
+    masked: element.classList.contains('is-masked'),
+    animations: element.closest('.hash-input')!.getAnimations({ subtree: true }).length,
+  }))
+  expect(nativeState.masked).toBe(false)
+  expect(nativeState.color).not.toBe('rgba(0, 0, 0, 0)')
+  expect(nativeState.animations).toBe(0)
+  await artworkHash(page).fill(DEFAULT_HASH)
+  await artworkHash(page).press('Enter')
+  await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
+})
+
+test('hash rolling does not animate the initial hash restored from the URL', async ({ page }) => {
+  await page.addInitScript(() => {
+    const state = window as Window & { hashRollStarts: string[] }
+    state.hashRollStarts = []
+    document.addEventListener('animationstart', (event) => {
+      if ((event.target as Element).closest('.hash-input')) state.hashRollStarts.push(event.animationName)
+    }, true)
+  })
+  const initial = setType(setByte(DEFAULT_HASH, 29, 251), 'Ribbed')
+  await page.goto(`/?hash=${initial}`)
+  await expect(artworkHash(page)).toHaveValue(initial)
+  await expect(page.locator('.hash-input__overlay')).toBeVisible()
+  await settleCanvas(page)
+  expect(await page.locator('.hash-input__current').allTextContents()).toEqual(Array.from(initial))
+  expect(await page.evaluate(() => (window as Window & { hashRollStarts: string[] }).hashRollStarts)).toEqual([])
+  expect(await page.locator('.hash-input').evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0)
+})
+
 test('all six types and Hyper produce the corresponding representable hash traits', async ({ page }) => {
   await openEditor(page)
   for (const type of TYPES) {
@@ -185,6 +356,41 @@ test('hue and spread controls update hash bytes through native keyboard input', 
   await page.getByRole('slider', { name: 'Color spread' }).press('End')
   expect(decodeHash(await artworkHash(page).inputValue()).bytes[28]).toBe(255)
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled()
+})
+
+test('starting hue follows the fixed rainbow and inverse-encodes the hash when reversed', async ({ page }) => {
+  await openEditor(page)
+  const slider = page.getByRole('slider', { name: 'Starting hue' })
+  const degrees = page.locator('output[for="hue"]')
+  const rainbow = await slider.evaluate(element => getComputedStyle(element, '::-webkit-slider-runnable-track').backgroundImage)
+  await page.getByRole('button', { name: 'Reverse', exact: true }).click()
+  const reversed = await artworkHash(page).inputValue()
+  expect(changedBytes(DEFAULT_HASH, reversed)).toEqual([30])
+  await expect(slider).toHaveValue('150')
+  await expect(degrees).toHaveText('212°')
+  expect(await slider.evaluate(element => getComputedStyle(element, '::-webkit-slider-runnable-track').backgroundImage)).toBe(rainbow)
+
+  for (const [reverse, expectedBytes] of [[true, [255, 170, 85, 0]], [false, [0, 85, 170, 255]]] as const) {
+    if (!reverse) {
+      const before = await artworkHash(page).inputValue()
+      await page.getByRole('button', { name: 'Reverse', exact: true }).click()
+      expect(changedBytes(before, await artworkHash(page).inputValue())).toEqual([30])
+    }
+    for (const [index, hue] of [0, 85, 170, 255].entries()) {
+      const before = await artworkHash(page).inputValue()
+      await slider.evaluate((element, value) => {
+        const input = element as HTMLInputElement
+        input.value = String(value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }, hue)
+      await expect(slider).toHaveValue(String(hue))
+      await expect(degrees).toHaveText(`${index * 120}°`)
+      const after = await artworkHash(page).inputValue()
+      expect(decodeHash(after).bytes[29]).toBe(expectedBytes[index])
+      expect(decodeHash(after).reverse).toBe(reverse)
+      expect(changedBytes(before, after).every(byte => byte === 29)).toBe(true)
+    }
+  }
 })
 
 test('invalid imports preserve artwork and a valid Fuzzy hash reconstructs identical pixels from its URL', async ({ page }) => {

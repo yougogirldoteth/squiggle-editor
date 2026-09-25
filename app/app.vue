@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import EditorRange from '~/components/EditorRange.vue'
-import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash } from '~/utils/squiggle'
+import HashInput from '~/components/HashInput.vue'
+import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash, visibleStartHue, setStartingHue } from '~/utils/squiggle'
 import type { SquiggleType } from '~/utils/squiggle'
 import { HashHistory } from '~/utils/history'
 
 const history = reactive(new HashHistory(DEFAULT_HASH))
 const hash = ref(DEFAULT_HASH)
 const traits = computed(() => decodeHash(hash.value))
+const startingHue = computed(() => visibleStartHue(traits.value))
 const canvas = ref<{ exportPng: () => void; resetPhase: () => void } | null>(null)
 const hashDraft = ref(DEFAULT_HASH)
 const hashError = ref('')
@@ -81,11 +83,6 @@ function stateUrl() {
   url.searchParams.set('speed', String(speed.value))
   return url
 }
-function share() {
-  playing.value = false
-  canvas.value?.resetPhase()
-  copy(stateUrl().href, 'Link copied')
-}
 function shortcut(event: KeyboardEvent) {
   const target = event.target as HTMLElement
   if (target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && target.type !== 'range')) return
@@ -132,13 +129,23 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <section class="hash-section" aria-label="Hash">
+      <div class="hash-bar" :class="{ invalid: hashError }">
+        <HashInput v-model="hashDraft" :hash="hash" :invalid="!!hashError" :described-by="hashError ? 'hash-error' : undefined" @load="importHash" @update:model-value="hashError = ''" />
+        <button v-if="hashDraft !== hash" class="hash-action" aria-label="Load hash" title="Load hash" @click="importHash"><EditorIcon name="arrow" /></button>
+        <button v-else class="hash-action" aria-label="Copy hash" title="Copy hash" @click="copy(hash, 'Hash copied')"><EditorIcon name="copy" /></button>
+      </div>
+      <span v-if="hashError" id="hash-error" class="sr-only" role="alert">{{ hashError }}</span>
+    </section>
+
     <aside class="types" aria-label="Squiggle type">
-      <p class="eyebrow type-heading">TYPE</p>
+      <p class="type-heading">Type</p>
       <div class="type-list">
         <button v-for="type in TYPES" :key="type" class="type-button" :class="{ selected: traits.type === type }" :aria-pressed="traits.type === type" @click="chooseType(type)">
           <TypePreview :type="type" /><span>{{ type }}</span><span class="selected-dot" aria-hidden="true" />
         </button>
       </div>
+      <a class="artist-credit" href="https://www.snowfro.com/projects/chromie-squiggle" target="_blank" rel="noopener noreferrer" title="Chromie Squiggle by Snowfro · Independent editor">By Snowfro ↗</a>
     </aside>
 
     <section class="controls-area" aria-label="Editor controls">
@@ -146,7 +153,7 @@ onBeforeUnmount(() => {
         <button v-for="(tab, index) in tabs" :id="`tab-${tab}`" :key="tab" role="tab" :aria-selected="activeTab === tab" :aria-controls="`panel-${tab}`" :tabindex="activeTab === tab ? 0 : -1" @click="selectTab(tab)" @keydown="tabKey($event, index)">{{ tab }}</button>
       </div>
       <div v-show="activeTab === 'Color'" id="panel-Color" class="tab-controls color-controls" role="tabpanel" aria-labelledby="tab-Color">
-      <EditorRange id="hue" label="Starting hue" :value="traits.startColor" :display="`${Math.round(traits.startColor / 255 * 360)}°`" spectrum @start="history.begin()" @change="byte(29, $event)" @end="history.commit()" />
+      <EditorRange id="hue" label="Starting hue" :value="startingHue" :display="`${Math.round(startingHue / 255 * 360)}°`" spectrum @start="history.begin()" @change="update(setStartingHue(hash, $event))" @end="history.commit()" />
       <EditorRange id="spread" label="Color spread" :min="3" :value="traits.hyper ? lastSpread : traits.bytes[28]!" :display="traits.hyper ? 'Hyper' : traits.spread.toFixed(1)" :disabled="traits.hyper" @start="history.begin()" @change="byte(28, $event)" @end="history.commit()" />
       <div class="color-toggles">
         <button class="toggle-button" :class="{ active: traits.reverse }" :aria-pressed="traits.reverse" title="Reverse color direction" @click="update(setByte(hash, 30, traits.reverse ? 128 : 0), true)"><EditorIcon name="reverse" /><span>Reverse</span></button>
@@ -187,21 +194,6 @@ onBeforeUnmount(() => {
       </div>
     </main>
 
-    <footer class="hash-bar">
-      <div class="hash-field">
-        <div class="hash-header">
-          <label for="hash" :class="{ invalid: hashError }">{{ hashError ? 'Invalid hash' : 'Artwork hash' }}</label>
-          <div class="hash-actions">
-            <button v-if="hashDraft !== hash" class="load-button" title="Load hash" @click="importHash">Load<EditorIcon name="arrow" /></button>
-            <button class="hash-action" aria-label="Copy hash" title="Copy hash" @click="copy(hash, 'Hash copied')"><EditorIcon name="copy" /><span>Copy</span></button>
-            <button class="hash-action" title="Copy a link to this squiggle" @click="share"><EditorIcon name="link" /><span>Share</span></button>
-          </div>
-        </div>
-        <textarea id="hash" v-model="hashDraft" rows="2" aria-label="Artwork hash" :aria-invalid="!!hashError" :aria-describedby="hashError ? 'hash-error' : undefined" spellcheck="false" autocapitalize="off" autocomplete="off" @keydown.enter.prevent="importHash" @input="hashError = ''" />
-        <span v-if="hashError" id="hash-error" class="sr-only" role="alert">{{ hashError }}</span>
-      </div>
-      <div class="attribution">Chromie Squiggle by <a href="https://www.snowfro.com/projects/chromie-squiggle" target="_blank" rel="noopener noreferrer">Snowfro ↗</a><span>Independent editor</span></div>
-    </footer>
     <div class="toast" role="status" aria-live="polite" :class="{ visible: notice }">{{ notice }}</div>
   </div>
 </template>

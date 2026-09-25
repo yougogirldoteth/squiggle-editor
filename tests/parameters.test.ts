@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGeometry, decodeHash, DEFAULT_HASH, drawSquiggle, parseHash, setByte, setType, toHash, TYPES } from '../app/utils/squiggle'
+import { buildGeometry, decodeHash, DEFAULT_HASH, drawSquiggle, parseHash, setByte, setStartingHue, setType, toHash, TYPES, visibleStartHue } from '../app/utils/squiggle'
 
 const WIDTH = 900
 const HEIGHT = 600
@@ -23,6 +23,45 @@ function render(hash: string, background = '#fff', phase = 0) {
 function centerline(hash: string) {
   return buildGeometry(hash, WIDTH, HEIGHT).points.map(({ x, y }) => [x, y])
 }
+
+describe('visible starting hue controls', () => {
+  it.each([false, true])('preserves every hue encoding with reversal set to %s', (reverse) => {
+    const initial = setByte(DEFAULT_HASH, 30, reverse ? 37 : 200)
+    const initialBytes = parseHash(initial)
+    for (let hue = 0; hue <= 255; hue++) {
+      const hash = setStartingHue(initial, hue)
+      const traits = decodeHash(hash)
+      expect(traits.bytes[29]).toBe(reverse ? 255 - hue : hue)
+      expect(visibleStartHue(traits)).toBe(hue)
+      expect(traits.bytes.filter((_, index) => index !== 29)).toEqual(initialBytes.filter((_, index) => index !== 29))
+      expect(setStartingHue(hash, visibleStartHue(traits))).toBe(hash)
+    }
+  })
+
+  it('quantizes the visible input before encoding the reversed hash byte', () => {
+    const reversed = setByte(DEFAULT_HASH, 30, 0)
+    expect(decodeHash(setStartingHue(reversed, 84.7)).bytes[29]).toBe(170)
+    expect(decodeHash(setStartingHue(reversed, -10)).bytes[29]).toBe(255)
+    expect(decodeHash(setStartingHue(reversed, 300)).bytes[29]).toBe(0)
+    expect(() => setStartingHue(reversed, Number.NaN)).toThrow()
+  })
+
+  it('selects the same starting primary colors in the unchanged original renderer in either direction', () => {
+    for (const reverseByte of [0, 255]) {
+      for (const [hue, expected] of [[0, 'rgb(255,0,0)'], [85, 'rgb(0,255,0)'], [170, 'rgb(0,0,255)'], [255, 'rgb(255,0,0)']] as const) {
+        const hash = setStartingHue(setByte(setType(DEFAULT_HASH, 'Normal'), 30, reverseByte), hue)
+        let firstFill: string | undefined
+        const ctx = {
+          fillStyle: '', strokeStyle: '',
+          save() {}, restore() {}, beginPath() {}, clearRect() {}, fillRect() {}, arc() {}, stroke() {},
+          fill() { firstFill ??= this.fillStyle },
+        }
+        drawSquiggle(ctx as unknown as CanvasRenderingContext2D, hash, WIDTH, HEIGHT, { background: '#fff', phase: 0 })
+        expect(firstFill).toBe(expected)
+      }
+    }
+  })
+})
 
 describe('full original shape parameters', () => {
   it.each([0, 64, 128, 192])('retains 64 byte26 values starting at %i and their fractional lengths through export', (start) => {

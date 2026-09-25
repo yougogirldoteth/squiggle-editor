@@ -32,10 +32,10 @@ The preview command serves the production build on the same port; stop the devel
 - Use the **Color, Shape, Texture, and View** tabs for the complete controls. Shape includes Length, Height, and a point selector with vertical position; Texture adds spacing and grayscale rib color when Ribbed is selected.
 - Grab the curve and pull vertically. The guides show the fixed horizontal spacing and vertical editing direction. Focus the canvas to use **Left/Right** to select a point and **Up/Down** to move it; hold **Shift** for a larger step. **Escape** cancels an active gesture.
 - Use Undo/Redo, or **Ctrl/Command Z** and **Ctrl/Command Shift Z**. A completed drag is one history step. Pointer events are fitted at most once per displayed frame from a stable gesture anchor; the final event is flushed on release, without animated interpolation or loss of hash precision.
-- Copy the hash, or paste a hash into its field and press **Enter** or **Load**. A valid hash is `0x` followed by 64 hexadecimal characters.
+- The centered hash bar sits above the artwork. Changed characters roll briefly as you edit; the effect stops when the field is focused and respects reduced-motion preferences. Copy the hash, or paste into its field and press **Enter** or **Load**. A valid hash is `0x` followed by 64 hexadecimal characters.
 - **New squiggle** randomizes the hash. **Reset** restores the hash loaded when the page opened, including a valid hash supplied in the URL.
 - Use Play/Pause, Speed, and Background to change the view. **Export** saves a 3000 × 2000 PNG in a fixed 3:2 frame, with the current background and animation phase and no editing guides. A fixed 5% outer margin keeps every original type and extreme valid curve inside the image, independently of the editor viewport.
-- **Share** copies a URL containing `?hash=…&bg=…&speed=…`. It pauses the animation and resets its phase to zero so opening that URL reproduces the canonical starting colors. The link uses the current host; a localhost link requires this app running on the recipient's machine.
+- The address bar stays in sync with `?hash=…&bg=…&speed=…`; copy that URL to reopen the same artwork and view settings at animation phase zero. A localhost link requires this app running on the recipient's machine.
 
 ## Parameters
 
@@ -44,7 +44,7 @@ Byte indexes below are zero-based. Hash controls preserve integer values from 0 
 | Control | Storage and range | Effect |
 | --- | --- | --- |
 | Type | Bytes 22, 23, 24, 31 | Chooses a valid flag combination for the six original styles. |
-| Starting hue | Byte 29: 0–255 | Sets the hue offset before the direction rule. |
+| Starting hue | Byte 29: 0–255 | Shows the visible starting color on the rainbow track; reversed color direction inverts the byte mapping. |
 | Reverse | Byte 30: below 128 or at least 128 | Reverses or preserves the original hue sequence. |
 | Color spread | Byte 28: 3–255 | Maps to approximately 5.53–50; smaller values produce more color cycles. |
 | Hyper | Byte 28: 0, 1, or 2 | Sets spread to 0.5 in all six types; the three encodings render equivalently. |
@@ -54,7 +54,7 @@ Byte indexes below are zero-based. Hash controls preserve integer values from 0 
 | Ribbed spacing | Byte 24: 0–29 | Values 0–13, 14–27, and 28–29 use marker intervals of 3, 4, and 5 samples. The full byte range remains available. |
 | Rib color | Byte 25: 0–255 | Sets Ribbed markers from black to white; inactive for other visible types. |
 | Background | View setting: 11 levels | Uses the original grayscale values: 255, 225, 200, 175, 150, 125, 100, 75, 50, 25, 0. |
-| Speed / Play / Pause | View settings: speed 0.1–20 | Controls color animation. Speed is shared in the URL; Share opens paused at phase zero. |
+| Speed / Play / Pause | View settings: speed 0.1–20 | Controls color animation. Speed is saved in the URL; opening a URL starts paused at phase zero. |
 
 Some bytes are latent: inactive shape points remain in the hash and become relevant when Length reveals them; byte 21 is unused by the original renderer. Style flags can also be masked by higher-priority styles. Type selection resolves the visible style without inventing independent controls for masked traits. Bytes 0–6 also contribute to Fuzzy's random seed, so its texture follows shape edits rather than a separate texture seed.
 
@@ -64,6 +64,6 @@ Sampling counts, circle diameters, stroke width, horizontal scale, and amplitude
 
 The original algorithm uses evenly spaced horizontal control points and byte-derived vertical values. Dragging fits nearby control values, rounds them to whole bytes, and clamps them to the original range. A drag changes only vertical values; Length selects a different valid set of evenly spaced points. Neither control creates an arbitrary path. Editing early shape bytes can also change Fuzzy's seeded texture.
 
-The hash contains the artwork's geometry and traits. Background, speed, animation state, animation phase, and viewport size are separate view settings. Importing the exported hash reconstructs the same artwork at the same viewport and view settings; Share deliberately uses phase zero. Resizing fits the original 3:2 drawing area inside the available canvas. Animation timing is normalized to elapsed time rather than depending on display refresh rate.
+The hash contains the artwork's geometry and traits. Background, speed, animation state, animation phase, and viewport size are separate view settings. Importing the exported hash reconstructs the same artwork at the same viewport and view settings; opening a URL starts at phase zero. Resizing fits the original 3:2 drawing area inside the available canvas. Animation timing is normalized to elapsed time rather than depending on display refresh rate.
 
 The renderer follows the original algorithm served by Art Blocks, including its sampling and random-number quirks. It uses native Canvas rather than the original p5 runtime. Browser rasterization, antialiasing, and device pixel ratios can differ, so this project does not claim pixel-identical output across renderers or devices. An edited hash is an algorithmic study, not a newly minted Chromie Squiggle token.

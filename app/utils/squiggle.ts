@@ -99,6 +99,19 @@ export function setByte(hash: string, index: number, value: number): string {
   return toHash(bytes)
 }
 
+/** Hue shown by a fixed rainbow control at the original animation phase. */
+export function visibleStartHue(traits: Pick<SquiggleTraits, 'startColor' | 'reverse'>): number {
+  return traits.reverse ? 255 - traits.startColor : traits.startColor
+}
+
+/** Encode the selected visible hue; reversal remains an independent hash flag. */
+export function setStartingHue(hash: string, value: number): string {
+  const traits = decodeHash(hash)
+  const hue = byte(value)
+  traits.bytes[29] = traits.reverse ? 255 - hue : hue
+  return toHash(traits.bytes)
+}
+
 /** Change only the flags needed for the visible type; retain latent hash traits. */
 export function setType(hash: string, type: SquiggleType): string {
   if (!TYPES.includes(type)) throw new RangeError('Unknown Squiggle type.')
