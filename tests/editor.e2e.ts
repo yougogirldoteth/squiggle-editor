@@ -125,8 +125,14 @@ test('essential controls fit desktop, narrow phones, and phone landscape without
     { width: 1440, height: 900 },
     { width: 1024, height: 768 },
     { width: 768, height: 768 },
+    { width: 360, height: 640 },
     { width: 390, height: 844 },
+    { width: 430, height: 932 },
     { width: 320, height: 568 },
+    { width: 480, height: 320 },
+    { width: 568, height: 320 },
+    { width: 640, height: 360 },
+    { width: 667, height: 375 },
     { width: 844, height: 390 },
   ]) {
     await page.setViewportSize(viewport)
@@ -192,7 +198,7 @@ test('essential controls fit desktop, narrow phones, and phone landscape without
     await expect(artwork(page)).toBeInViewport({ ratio: 1 })
     const bounds = (await artwork(page).boundingBox())!
     expect(bounds.width).toBeGreaterThan(200)
-    expect(bounds.height).toBeGreaterThan(viewport.width > viewport.height ? 160 : 180)
+    expect(bounds.height).toBeGreaterThan(viewport.height <= 320 ? 120 : viewport.width > viewport.height ? 160 : 180)
     if (viewport.width === 1440) await page.screenshot({ path: 'work/polish-desktop.png' })
     for (const [tab, labels] of [
       ['Color', ['Starting hue', 'Color spread']],
