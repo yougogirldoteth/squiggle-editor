@@ -1,6 +1,6 @@
 # Squiggle Editor
 
-A single-screen Nuxt editor for exploring the Chromie Squiggle algorithm by Snowfro. Shape the curve, choose a texture, and change its colors; every artwork edit stays representable by its 32-byte hash. The responsive interface supports mouse, touch, and keyboard input.
+A single-screen Nuxt editor for exploring the Chromie Squiggle algorithm by Snowfro. Shape the curve, choose a texture, and change its colors; every artwork edit stays representable by its 32-byte hash. The responsive interface supports mouse, touch, and keyboard input. Type thumbnails render actual collection pieces from locally bundled canonical hashes.
 
 This is an independent local project, with no backend, wallet connection, or deployment service. See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and rendering provenance.
 
@@ -31,10 +31,10 @@ The preview command serves the production build on the same port; stop the devel
 - Choose **Normal, Bold, Slinky, Ribbed, Pipe, or Fuzzy**. Set the starting hue and color spread, reverse the colors, or enable Hyper on any type.
 - Use the **Color, Shape, Texture, and View** tabs for the complete controls. Shape includes Length, Height, and a point selector with vertical position; Texture adds spacing and grayscale rib color when Ribbed is selected.
 - Grab the curve and pull vertically. The guides show the fixed horizontal spacing and vertical editing direction. Focus the canvas to use **Left/Right** to select a point and **Up/Down** to move it; hold **Shift** for a larger step. **Escape** cancels an active gesture.
-- Use Undo/Redo, or **Ctrl/Command Z** and **Ctrl/Command Shift Z**. A completed drag is one history step.
+- Use Undo/Redo, or **Ctrl/Command Z** and **Ctrl/Command Shift Z**. A completed drag is one history step. Pointer events are fitted at most once per displayed frame from a stable gesture anchor; the final event is flushed on release, without animated interpolation or loss of hash precision.
 - Copy the hash, or paste a hash into its field and press **Enter** or **Load**. A valid hash is `0x` followed by 64 hexadecimal characters.
 - **New squiggle** randomizes the hash. **Reset** restores the hash loaded when the page opened, including a valid hash supplied in the URL.
-- Use Play/Pause, Speed, and Background to change the view. **Export** saves a PNG with the current background and animation phase, without editing guides.
+- Use Play/Pause, Speed, and Background to change the view. **Export** saves a 3000 × 2000 PNG in a fixed 3:2 frame, with the current background and animation phase and no editing guides. A fixed 5% outer margin keeps every original type and extreme valid curve inside the image, independently of the editor viewport.
 - **Share** copies a URL containing `?hash=…&bg=…&speed=…`. It pauses the animation and resets its phase to zero so opening that URL reproduces the canonical starting colors. The link uses the current host; a localhost link requires this app running on the recipient's machine.
 
 ## Parameters

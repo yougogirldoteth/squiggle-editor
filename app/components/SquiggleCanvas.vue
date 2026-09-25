@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue'
-import { buildGeometry, decodeHash, dragCurve, drawSquiggle, nearestCurvePoint, setByte } from '~/utils/squiggle'
+import { buildGeometryFrame, decodeHash, dragCurve, drawSquiggle, nearestCurvePoint, setByte } from '~/utils/squiggle'
 
 const props = withDefaults(defineProps<{
   hash: string
@@ -30,7 +30,7 @@ const selectedControl = ref(props.selectedPoint ?? 0)
 const instructionsId = useId()
 
 const geometry = computed(() => width.value > 0 && height.value > 0
-  ? buildGeometry(renderHash.value, width.value, height.value)
+  ? buildGeometryFrame(renderHash.value, width.value, height.value)
   : null)
 const controls = computed(() => geometry.value?.controls ?? [])
 const selection = computed(() => controls.value[Math.min(selectedControl.value, controls.value.length - 1)])
@@ -60,26 +60,39 @@ let previousFrame: number | null = null
 let phase = 0
 let pixelRatio = 1
 let mounted = false
+let drawing = false
+let needsRedraw = true
+let pendingClientY: number | null = null
+let pendingHover: { x: number; y: number } | null = null
 
-function requestDraw() {
-  if (mounted && frame === null) frame = requestAnimationFrame(drawFrame)
+function requestDraw(redraw = true) {
+  if (redraw) needsRedraw = true
+  if (mounted && frame === null && !drawing) frame = requestAnimationFrame(drawFrame)
 }
 
 function drawFrame(timestamp: number) {
   frame = null
+  drawing = true
+  flushPointerMove()
+  if (pendingHover) {
+    updateHover(pendingHover)
+    pendingHover = null
+  }
   const animated = props.playing && !pointerGesture && keyboardStartHash === null
   if (animated && previousFrame !== null) phase += Math.min(timestamp - previousFrame, 80) * 0.06 * props.speed
   previousFrame = animated ? timestamp : null
 
   const context = canvas.value?.getContext('2d')
-  if (context && width.value > 0 && height.value > 0) {
+  if (context && width.value > 0 && height.value > 0 && (needsRedraw || animated)) {
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
     drawSquiggle(context, renderHash.value, width.value, height.value, {
       background: props.background,
       phase,
     })
-    if (animated) requestDraw()
+    needsRedraw = false
   }
+  drawing = false
+  if (animated) requestDraw()
 }
 
 function updateHash(hash: string) {
@@ -133,6 +146,8 @@ function onPointerDown(event: PointerEvent) {
   event.preventDefault()
   canvas.value.focus({ preventScroll: true })
   canvas.value.setPointerCapture(event.pointerId)
+  pendingClientY = null
+  pendingHover = null
   pointerGesture = {
     pointerId: event.pointerId,
     startHash: renderHash.value,
@@ -156,18 +171,33 @@ function onPointerMove(event: PointerEvent) {
   if (pointerGesture) {
     if (event.pointerId !== pointerGesture.pointerId) return
     event.preventDefault()
-    const gesture = pointerGesture
-    const deltaY = event.clientY - gesture.startClientY
-    if (gesture.pointByteIndex !== null) {
-      const value = decodeHash(gesture.startHash).bytes[gesture.pointByteIndex]!
-      updateHash(setByte(gesture.startHash, gesture.pointByteIndex, value + deltaY / gesture.pixelsPerByte))
-    } else {
-      updateHash(dragCurve(gesture.startHash, gesture.width, gesture.height, gesture.segment, gesture.t, deltaY))
-    }
+    const samples = event.getCoalescedEvents?.()
+    pendingClientY = samples?.length ? samples[samples.length - 1]!.clientY : event.clientY
+    requestDraw(false)
     return
   }
   if (event.pointerType === 'touch' || !canvas.value || !geometry.value) return
-  const point = eventPoint(event)
+  pendingHover = eventPoint(event)
+  requestDraw(false)
+}
+
+// Fit once per displayed frame, always from the gesture's original hash.
+// Releasing flushes the last event; cancelling discards it entirely.
+function flushPointerMove() {
+  if (pendingClientY === null || !pointerGesture) return
+  const gesture = pointerGesture
+  const deltaY = pendingClientY - gesture.startClientY
+  pendingClientY = null
+  if (gesture.pointByteIndex !== null) {
+    const value = decodeHash(gesture.startHash).bytes[gesture.pointByteIndex]!
+    updateHash(setByte(gesture.startHash, gesture.pointByteIndex, value + deltaY / gesture.pixelsPerByte))
+  } else {
+    updateHash(dragCurve(gesture.startHash, gesture.width, gesture.height, gesture.segment, gesture.t, deltaY))
+  }
+}
+
+function updateHover(point: { x: number; y: number }) {
+  if (!geometry.value) return
   const handle = controlAtPoint(point.x, point.y)
   if (handle) {
     hovered.value = true
@@ -182,6 +212,8 @@ function onPointerMove(event: PointerEvent) {
 function finishPointerGesture(cancel = false) {
   if (!pointerGesture) return
   const gesture = pointerGesture
+  if (cancel) pendingClientY = null
+  else flushPointerMove()
   pointerGesture = null
   dragging.value = false
   if (cancel) updateHash(gesture.startHash)
@@ -192,7 +224,10 @@ function finishPointerGesture(cancel = false) {
 }
 
 function onPointerUp(event: PointerEvent) {
-  if (event.pointerId === pointerGesture?.pointerId) finishPointerGesture()
+  if (event.pointerId === pointerGesture?.pointerId) {
+    pendingClientY = event.clientY
+    finishPointerGesture()
+  }
 }
 
 function onPointerCancel(event: PointerEvent) {
@@ -284,12 +319,18 @@ function resetPhase() {
 function exportPng() {
   if (!mounted || width.value <= 0 || height.value <= 0) return
   const output = document.createElement('canvas')
-  output.width = Math.round(width.value * 2)
-  output.height = Math.round(height.value * 2)
+  output.width = 3000
+  output.height = 2000
   const context = output.getContext('2d')
   if (!context) return
-  context.scale(2, 2)
-  drawSquiggle(context, renderHash.value, width.value, height.value, { background: props.background, phase })
+  // A fixed print margin preserves the original 3:2 geometry while leaving
+  // room for valid spline overshoot and the widest Bold/Fuzzy marks.
+  context.fillStyle = props.background
+  context.fillRect(0, 0, output.width, output.height)
+  context.save()
+  context.translate(150, 100)
+  drawSquiggle(context, renderHash.value, 2700, 1800, { background: props.background, phase })
+  context.restore()
   output.toBlob((blob) => {
     if (!blob) return
     const url = URL.createObjectURL(blob)
@@ -302,6 +343,7 @@ function exportPng() {
 }
 
 watch(() => props.hash, (hash) => {
+  if (hash === renderHash.value) return
   renderHash.value = hash
   const clamped = Math.min(selectedControl.value, Math.max(0, controls.value.length - 1))
   if (clamped !== selectedControl.value) selectControl(clamped)
@@ -357,7 +399,7 @@ defineExpose({ exportPng, resetPhase })
       @pointerup="onPointerUp"
       @pointercancel="onPointerCancel"
       @lostpointercapture="onPointerCancel"
-      @pointerleave="hovered = false"
+      @pointerleave="hovered = false; pendingHover = null"
       @keydown="onKeyDown"
       @keyup="onKeyUp"
       @focus="onFocus"
