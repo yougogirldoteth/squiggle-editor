@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
   letter-spacing: 0;
   font-variant-ligatures: none;
   font-kerning: none;
-  text-align: center;
+  text-align: left;
   text-indent: 0;
   color: var(--hash-color, #384630);
 }

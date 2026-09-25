@@ -109,10 +109,10 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
   --hash-height: 32px;
   --hash-padding: 0;
 }
-.hash-bar { position: relative; width: calc(66ch + 84px); max-width: 100%; padding: var(--space-3) 40px; border: 1px solid var(--line); border-radius: 16px; background: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--hash-font-size); }
-.hash-bar:focus-within { border-color: #9cab8d; outline: 2px solid #9cab8d55; outline-offset: 2px; }
+.hash-bar { display: grid; grid-template-columns: minmax(0, 1fr) 36px; align-items: center; gap: var(--space-3); width: calc(66ch + 76px); max-width: 100%; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border: 1px solid var(--line); border-radius: 14px; background: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--hash-font-size); }
 .hash-bar.invalid { border-color: #c17566; }
-.hash-action { position: absolute; top: 50%; right: var(--space-1); transform: translateY(-50%); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: #78816f; }
+.hash-action { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid #e2e7da; border-radius: 8px; background: #f3f5ef; color: #59694d; }
+.hash-action:focus-visible { outline: none; background: #e4ebdb; border-color: #9cab8d; color: #405632; }
 .hash-action svg { width: 16px; height: 16px; }
 .artist-credit { margin-top: auto; padding-top: var(--space-4); align-self: flex-start; font-size: 10px; color: var(--muted); }
 .toast { position: fixed; bottom: 32px; left: 50%; transform: translate(-50%, 8px); background: #323e2ced; color: #fff; padding: var(--space-3) var(--space-4); border-radius: var(--radius); font-size: 12px; pointer-events: none; opacity: 0; transition: opacity .15s, transform .15s; z-index: 10; max-width: 90vw; text-align: center; }
@@ -144,8 +144,8 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
   .new-button span, .export-button span { display: none; }
   .header-actions svg { width: 17px; height: 17px; }
   .hash-section { --hash-font-size: clamp(11.5px, 3.2vw, 16px); --hash-line-height: 22px; --hash-height: 44px; }
-  .hash-bar { padding: var(--space-2) 32px; border-radius: 14px; }
-  .hash-action { width: 28px; height: 32px; right: 2px; }
+  .hash-bar { grid-template-columns: minmax(0, 1fr) 32px; gap: var(--space-2); padding: var(--space-2) 6px var(--space-2) var(--space-3); }
+  .hash-action { width: 32px; height: 32px; }
   .hash-action svg { width: 15px; height: 15px; }
   .control-tabs { height: 32px; gap: 0; justify-content: space-between; }
   .control-tabs button { min-width: 56px; font-size: 11px; }
