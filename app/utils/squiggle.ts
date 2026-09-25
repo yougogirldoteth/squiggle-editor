@@ -39,8 +39,7 @@ export interface CurveSample extends CurveLocation {
   fuzz: { x: number, y: number, diameter: number } | null
 }
 
-export interface SquiggleGeometry {
-  points: CurveSample[]
+export interface SquiggleFrame {
   controls: { x: number, y: number, byteIndex: number }[]
   traits: SquiggleTraits
   squigW: number
@@ -50,6 +49,10 @@ export interface SquiggleGeometry {
   segmentedDiameter: number
   pipeDiameter: number
   pickRadius: number
+}
+
+export interface SquiggleGeometry extends SquiggleFrame {
+  points: CurveSample[]
 }
 
 export function parseHash(hash: string): number[] {
@@ -162,13 +165,12 @@ function randomSequence(hash: string): () => number {
   }
 }
 
-export function buildGeometry(hash: string, width: number, height: number): SquiggleGeometry {
+/** Controls and picking dimensions without constructing the artwork samples. */
+export function buildGeometryFrame(hash: string, width: number, height: number): SquiggleFrame {
   const traits = decodeHash(hash)
-  const normalizedHash = toHash(traits.bytes)
   const size = dimensions(width, height)
   const { squigW, squigH } = size
   const steps = traits.slinky ? 50 : traits.fuzzy ? 1000 : 200
-  const div = Math.floor(3 + 17 * (traits.bytes[24]! / 230))
   const segmentCount = Math.ceil(traits.segments - 2)
   const xScale = squigW / traits.segments / 2
   const controls = Array.from({ length: segmentCount + 3 }, (_, byteIndex) => ({
@@ -176,13 +178,43 @@ export function buildGeometry(hash: string, width: number, height: number): Squi
     x: size.offsetX + xScale * byteIndex,
     y: size.offsetY + controlY(traits.bytes[byteIndex]!, squigH, traits.ht),
   }))
-  const points: CurveSample[] = []
+  const mainDiameter = traits.bold && !traits.slinky ? squigH / 5 : squigH / 13
+  const segmentedDiameter = squigH / 12
+  const pipeDiameter = squigH / 7
+  return {
+    controls, traits, squigW, squigH, steps,
+    mainDiameter, segmentedDiameter, pipeDiameter,
+    pickRadius: traits.fuzzy ? squigH / 8 : (traits.slinky && traits.pipe ? pipeDiameter : traits.segmented && !traits.bold && !traits.slinky ? segmentedDiameter : mainDiameter) / 2,
+  }
+}
+
+export function buildGeometry(hash: string, width: number, height: number): SquiggleGeometry {
+  const frame = buildGeometryFrame(hash, width, height)
+  const { traits, squigW, squigH, steps } = frame
+  const normalizedHash = toHash(traits.bytes)
+  const offsetX = width / 2 - squigW / 4
+  const offsetY = height / 2
+  const xScale = squigW / traits.segments / 2
+  const div = Math.floor(3 + 17 * (traits.bytes[24]! / 230))
+  const segmentCount = Math.ceil(traits.segments - 2)
+  const points = new Array<CurveSample>(segmentCount * (steps + 1))
   let colorCounter = 0
   for (let segment = 0; segment < traits.segments - 2; segment++) {
+    // These four controls are constant for every sample in this segment.
+    const x0 = xScale * segment
+    const x1 = xScale * (segment + 1)
+    const x2 = xScale * (segment + 2)
+    const x3 = xScale * (segment + 3)
+    const y0 = controlY(traits.bytes[segment]!, squigH, traits.ht)
+    const y1 = controlY(traits.bytes[segment + 1]!, squigH, traits.ht)
+    const y2 = controlY(traits.bytes[segment + 2]!, squigH, traits.ht)
+    const y3 = controlY(traits.bytes[segment + 3]!, squigH, traits.ht)
     // The original resets its seed after each segment, including the last.
     const rnd = randomSequence(normalizedHash)
     for (let i = 0; i <= steps; i++) {
-      const point = sample(traits, size, segment, i / steps)
+      const t = i / steps
+      const x = offsetX + curve(x0, x1, x2, x3, t)
+      const y = offsetY + curve(y0, y1, y2, y3, t)
       const isEndpoint = i === 0 || i === steps - 1
       let fuzz: CurveSample['fuzz'] = null
       if (traits.fuzzy) {
@@ -190,30 +222,23 @@ export function buildGeometry(hash: string, width: number, height: number): Squi
         const dy = rnd() * squigH / 10
         if (Math.sqrt(dx * dx + dy * dy) < squigH / 11.5) {
           fuzz = {
-            x: point.x + dx,
-            y: point.y + dy,
+            x: x + dx,
+            y: y + dy,
             diameter: squigH / 160 + rnd() * (squigH / 16 - squigH / 160),
           }
         }
       }
-      points.push({
-        ...point,
+      points[colorCounter] = {
+        x, y, segment, t,
         baseHue: colorCounter / traits.spread + traits.startColor,
         isEndpoint,
         isSegmentMarker: traits.segmented && !traits.slinky && !traits.bold && (isEndpoint || i % div === 0),
         fuzz,
-      })
+      }
       colorCounter++
     }
   }
-  const mainDiameter = traits.bold && !traits.slinky ? squigH / 5 : squigH / 13
-  const segmentedDiameter = squigH / 12
-  const pipeDiameter = squigH / 7
-  return {
-    points, controls, traits, squigW, squigH, steps,
-    mainDiameter, segmentedDiameter, pipeDiameter,
-    pickRadius: traits.fuzzy ? squigH / 8 : (traits.slinky && traits.pipe ? pipeDiameter : traits.segmented && !traits.bold && !traits.slinky ? segmentedDiameter : mainDiameter) / 2,
-  }
+  return { ...frame, points }
 }
 
 /** Find the nearest point on the actual centerline, independently of texture. */
