@@ -8,7 +8,8 @@
     "preview": "nuxt preview --host 127.0.0.1 --port 3021",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "nuxt": "4.5.2",
