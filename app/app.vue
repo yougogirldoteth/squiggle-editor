@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import EditorRange from '~/components/EditorRange.vue'
 import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash } from '~/utils/squiggle'
 import type { SquiggleType } from '~/utils/squiggle'
 import { HashHistory } from '~/utils/history'
@@ -12,7 +13,16 @@ const hashError = ref('')
 const playing = ref(false)
 const dragging = ref(false)
 const background = ref('#ffffff')
-const backgrounds = ['#ffffff', '#e7e7e2', '#20221f']
+const grayLevels = [255, 225, 200, 175, 150, 125, 100, 75, 50, 25, 0]
+const backgrounds = grayLevels.map(gray => `#${gray.toString(16).padStart(2, '0').repeat(3)}`)
+const backgroundIndex = computed(() => backgrounds.indexOf(background.value))
+const swatches = [backgrounds[0]!, backgrounds[4]!, backgrounds[10]!]
+const speed = ref(1)
+const tabs = ['Color', 'Shape', 'Texture', 'View'] as const
+const activeTab = ref<typeof tabs[number]>('Color')
+const selectedPoint = ref(8)
+const pointCount = computed(() => Math.ceil(traits.value.segments - 2) + 3)
+watch(pointCount, count => { selectedPoint.value = Math.min(selectedPoint.value, count - 1) })
 const notice = ref('')
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
 let urlTimer: ReturnType<typeof setTimeout> | undefined
@@ -35,7 +45,15 @@ function update(value: string, commit = false) {
   sync(value)
   if (commit) history.commit()
 }
-function byte(index: number, event: Event) { update(setByte(hash.value, index, Number((event.target as HTMLInputElement).value))) }
+function byte(index: number, value: number) { update(setByte(hash.value, index, value)) }
+function selectTab(tab: typeof tabs[number]) { history.commit(); activeTab.value = tab }
+function tabKey(event: KeyboardEvent, index: number) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? 3 : (index + (event.key === 'ArrowRight' ? 1 : 3)) % 4
+  selectTab(tabs[next]!)
+  document.getElementById(`tab-${tabs[next]}`)?.focus()
+}
 function chooseType(type: SquiggleType) { update(setType(hash.value, type), true) }
 function undo() { sync(history.undo()) }
 function redo() { sync(history.redo()) }
@@ -60,6 +78,7 @@ function stateUrl() {
   const url = new URL(window.location.href)
   url.searchParams.set('hash', hash.value)
   url.searchParams.set('bg', background.value.slice(1))
+  url.searchParams.set('speed', String(speed.value))
   return url
 }
 function share() {
@@ -75,7 +94,7 @@ function shortcut(event: KeyboardEvent) {
     event.shiftKey ? redo() : undo()
   }
 }
-watch([hash, background], () => {
+watch([hash, background, speed], () => {
   if (!import.meta.client) return
   clearTimeout(urlTimer)
   urlTimer = setTimeout(() => window.history.replaceState(null, '', stateUrl()), 150)
@@ -89,6 +108,8 @@ onMounted(() => {
   }
   const bg = `#${params.get('bg')}`
   if (backgrounds.includes(bg)) background.value = bg
+  const urlSpeed = Number(params.get('speed'))
+  if (urlSpeed >= 0.1 && urlSpeed <= 20) speed.value = Math.round(urlSpeed * 10) / 10
   window.addEventListener('keydown', shortcut)
 })
 onBeforeUnmount(() => {
@@ -121,31 +142,49 @@ onBeforeUnmount(() => {
       <div class="type-bottom"><span class="mini-dot" /><span>Made of color.</span></div>
     </aside>
 
-    <section class="color-controls" aria-label="Color controls">
-      <div class="range-control hue-control">
-        <label for="hue">Starting hue <output for="hue">{{ Math.round(traits.startColor / 255 * 360) }}°</output></label>
-        <input id="hue" class="spectrum" aria-label="Starting hue" type="range" min="0" max="255" step="1" :value="traits.startColor" @pointerdown="history.begin()" @keydown="history.begin()" @input="byte(29, $event)" @change="history.commit()" @blur="history.commit()">
+    <section class="controls-area" aria-label="Editor controls">
+      <div class="control-tabs" role="tablist" aria-label="Parameters">
+        <button v-for="(tab, index) in tabs" :id="`tab-${tab}`" :key="tab" role="tab" :aria-selected="activeTab === tab" :aria-controls="`panel-${tab}`" :tabindex="activeTab === tab ? 0 : -1" @click="selectTab(tab)" @keydown="tabKey($event, index)">{{ tab }}</button>
       </div>
-      <div class="range-control spread-control">
-        <label for="spread">Color spread <output for="spread">{{ traits.hyper ? 'Hyper' : traits.spread.toFixed(1) }}</output></label>
-        <input id="spread" aria-label="Color spread" type="range" min="3" max="255" step="1" :value="traits.hyper ? lastSpread : traits.bytes[28]" :disabled="traits.hyper" @pointerdown="history.begin()" @keydown="history.begin()" @input="byte(28, $event)" @change="history.commit()" @blur="history.commit()">
-      </div>
+      <div v-show="activeTab === 'Color'" id="panel-Color" class="tab-controls color-controls" role="tabpanel" aria-labelledby="tab-Color">
+      <EditorRange id="hue" label="Starting hue" :value="traits.startColor" :display="`${Math.round(traits.startColor / 255 * 360)}°`" spectrum @start="history.begin()" @change="byte(29, $event)" @end="history.commit()" />
+      <EditorRange id="spread" label="Color spread" :min="3" :value="traits.hyper ? lastSpread : traits.bytes[28]!" :display="traits.hyper ? 'Hyper' : traits.spread.toFixed(1)" :disabled="traits.hyper" @start="history.begin()" @change="byte(28, $event)" @end="history.commit()" />
       <div class="color-toggles">
         <button class="toggle-button" :class="{ active: traits.reverse }" :aria-pressed="traits.reverse" title="Reverse color direction" @click="update(setByte(hash, 30, traits.reverse ? 128 : 0), true)"><EditorIcon name="reverse" /><span>Reverse</span></button>
         <button class="toggle-button hyper-button" :class="{ active: traits.hyper }" :aria-pressed="traits.hyper" title="Hyper spectrum" @click="toggleHyper"><EditorIcon name="spark" /><span>Hyper</span></button>
       </div>
+      </div>
+      <div v-show="activeTab === 'Shape'" id="panel-Shape" class="tab-controls shape-controls" role="tabpanel" aria-labelledby="tab-Shape">
+        <EditorRange id="length" label="Length" :value="traits.bytes[26]!" :display="traits.segments.toFixed(2)" title="Original segment count, with full byte precision" @start="history.begin()" @change="byte(26, $event)" @end="history.commit()" />
+        <EditorRange id="height" label="Height" :value="255 - traits.bytes[27]!" :display="`${Math.round(400 / traits.ht)}%`" title="Curve height; taller to the right" @start="history.begin()" @change="byte(27, 255 - $event)" @end="history.commit()" />
+        <div class="range-control point-control">
+          <div class="point-heading"><label for="point-height">Point</label><span class="point-stepper"><button aria-label="Previous point" :disabled="selectedPoint === 0" @click="selectedPoint--">‹</button><output>{{ selectedPoint + 1 }}<span>/{{ pointCount }}</span></output><button aria-label="Next point" :disabled="selectedPoint === pointCount - 1" @click="selectedPoint++">›</button></span></div>
+          <input id="point-height" aria-label="Point height" type="range" min="0" max="255" :value="255 - traits.bytes[selectedPoint]!" @pointerdown="history.begin()" @keydown="history.begin()" @input="byte(selectedPoint, 255 - Number(($event.target as HTMLInputElement).value))" @change="history.commit()" @blur="history.commit()">
+        </div>
+      </div>
+      <div v-show="activeTab === 'Texture'" id="panel-Texture" class="tab-controls texture-controls" role="tabpanel" aria-labelledby="tab-Texture">
+        <EditorRange id="spacing" label="Spacing" :max="29" :value="Math.min(29, traits.bytes[24]!)" :display="traits.type === 'Ribbed' ? String(Math.floor(3 + 17 * traits.bytes[24]! / 230)) : '—'" :disabled="traits.type !== 'Ribbed'" title="Ribbed spacing" @start="history.begin()" @change="byte(24, $event)" @end="history.commit()" />
+        <EditorRange id="rib-color" label="Rib color" :value="traits.bytes[25]!" :display="traits.type === 'Ribbed' ? `${Math.round(traits.bytes[25]! / 255 * 100)}%` : '—'" :disabled="traits.type !== 'Ribbed'" grayscale title="Ribbed grayscale" @start="history.begin()" @change="byte(25, $event)" @end="history.commit()" />
+        <button v-if="traits.type !== 'Ribbed'" class="texture-context" @click="chooseType('Ribbed')">Ribbed <EditorIcon name="arrow" /></button>
+        <span v-else class="texture-context">Ribbed</span>
+      </div>
+      <div v-show="activeTab === 'View'" id="panel-View" class="tab-controls view-controls" role="tabpanel" aria-labelledby="tab-View">
+        <EditorRange id="speed" label="Speed" :min="0.1" :max="20" :step="0.1" :value="speed" :display="`${speed.toFixed(1)}×`" @change="speed = $event" />
+        <EditorRange id="background" label="Background" :max="10" :value="backgroundIndex" :display="backgroundIndex === 0 ? 'White' : backgroundIndex === 10 ? 'Black' : `${Math.round(grayLevels[backgroundIndex]! / 255 * 100)}%`" grayscale @change="background = backgrounds[$event]!" />
+        <button class="toggle-button view-play" :aria-pressed="playing" @click="playing = !playing"><EditorIcon :name="playing ? 'pause' : 'play'" />{{ playing ? 'Pause' : 'Play' }}</button>
+      </div>
     </section>
 
     <main class="stage" :style="{ background }">
-      <div class="stage-label" :class="{ 'on-dark': background === '#20221f' }"><span class="mini-dot" />{{ traits.type }}<span v-if="traits.hyper"> / Hyper</span></div>
-      <SquiggleCanvas ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" @update:hash="update($event)" @gesture-start="history.begin(); dragging = true" @gesture-end="history.commit(); dragging = false" />
+      <div class="stage-label" :class="{ 'on-dark': backgroundIndex > 5 }"><span class="mini-dot" />{{ traits.type }}<span v-if="traits.hyper"> / Hyper</span></div>
+      <SquiggleCanvas ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="history.begin(); dragging = true" @gesture-end="history.commit(); dragging = false" />
       <div class="canvas-tools">
         <div class="play-tools">
           <button class="stage-button" :aria-label="playing ? 'Pause animation' : 'Play animation'" :title="playing ? 'Pause' : 'Play'" :aria-pressed="playing" @click="playing = !playing"><EditorIcon :name="playing ? 'pause' : 'play'" /></button>
           <button class="stage-button" aria-label="Reset squiggle" title="Reset squiggle" @click="reset"><EditorIcon name="reset" /></button>
         </div>
         <div class="backgrounds" aria-label="Canvas background">
-          <button v-for="(bg, index) in backgrounds" :key="bg" :aria-label="`${['White', 'Gray', 'Dark'][index]} background`" :aria-pressed="background === bg" :title="`${['White', 'Gray', 'Dark'][index]} background`" :class="{ chosen: background === bg }" @click="background = bg"><span :style="{ background: bg }" /></button>
+          <button v-for="(bg, index) in swatches" :key="bg" :aria-label="`${['White', 'Gray', 'Dark'][index]} background`" :aria-pressed="background === bg" :title="`${['White', 'Gray', 'Dark'][index]} background`" :class="{ chosen: background === bg }" @click="background = bg"><span :style="{ background: bg }" /></button>
         </div>
       </div>
     </main>

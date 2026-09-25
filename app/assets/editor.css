@@ -880,3 +880,209 @@ h1 span {
     transition:none!important
   }
 }
+
+/* Parameter tabs share one fixed-height control area on every screen. */
+.controls-area {
+  grid-area:colors;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+
+.control-tabs {
+  display:flex;
+  gap:20px;
+  height:36px;
+  flex-shrink:0;
+  padding:6px 6px 0;
+}
+
+.control-tabs button {
+  font-size:10px;
+  padding:0 2px 5px;
+  color:#92998a;
+  border-bottom:2px solid transparent;
+}
+
+.control-tabs button[aria-selected=true] {
+  color:#405632;
+  border-bottom-color:#8ca276;
+}
+
+.control-tabs button:hover {
+  background:transparent;
+  color:#405632;
+}
+
+.tab-controls {
+  display:grid;
+  flex:1;
+  min-height:0;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
+  gap:32px;
+  align-items:center;
+  padding:0 6px 5px;
+}
+
+.shape-controls {
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+
+.point-heading {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  height:20px;
+  margin-bottom:3px;
+  gap:5px;
+}
+
+.point-heading label {
+  margin:0;
+}
+
+.point-stepper {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+}
+
+.point-stepper output {
+  min-width:35px;
+  text-align:center;
+}
+
+.point-stepper output span {
+  opacity:.5;
+}
+
+.point-stepper button {
+  width:24px;
+  height:27px;
+  border-radius:5px;
+  font-size:21px;
+  line-height:1;
+}
+
+.texture-context {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border-radius:8px;
+  height:35px;
+  padding:0 10px;
+  font-size:10px;
+  color:#89977b;
+}
+
+.texture-context svg {
+  width:13px;
+  height:13px;
+}
+
+.range-control input.grayscale::-webkit-slider-runnable-track {
+  background:linear-gradient(to right,#555,#eee);
+}
+
+.range-control input.grayscale::-moz-range-track {
+  background:linear-gradient(to right,#555,#eee);
+}
+
+#background::-webkit-slider-runnable-track {
+  background:linear-gradient(to right,#eee,#555);
+}
+
+#background::-moz-range-track {
+  background:linear-gradient(to right,#eee,#555);
+}
+
+@media(min-width:651px) {
+  .editor {
+    grid-template-rows:86px 123px minmax(0,1fr) 105px;
+  }
+}
+
+@media(min-width:1600px) {
+  .editor {
+    grid-template-rows:100px 134px minmax(0,1fr) 115px;
+  }
+}
+
+@media(min-width:651px) and (max-width:1000px) {
+  .editor {
+    grid-template-rows:74px 113px minmax(0,1fr) 90px;
+  }
+  .tab-controls {
+    gap:16px;
+  }
+}
+
+@media(max-width:650px) {
+  .editor {
+    grid-template-rows:64px 149px minmax(0,1fr) 98px 77px;
+  }
+  .control-tabs {
+    height:34px;
+    padding-top:5px;
+    gap:0;
+    justify-content:space-between;
+  }
+  .control-tabs button {
+    min-width:56px;
+    font-size:10px;
+  }
+  .tab-controls {
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 35px;
+    gap:5px 26px;
+    padding:7px 5px 10px;
+  }
+  .point-control {
+    grid-column:1/-1;
+    display:flex;
+    align-items:center;
+    gap:18px;
+  }
+  .point-heading {
+    min-width:122px;
+    margin:0;
+  }
+  .point-control input {
+    min-width:0;
+    flex:1;
+  }
+  .texture-context,.view-play {
+    grid-column:1/-1;
+    justify-self:center;
+  }
+  .texture-context {
+    padding:0 15px;
+  }
+}
+
+@media(max-height:710px) and (max-width:650px) {
+  .editor {
+    grid-template-rows:54px 134px minmax(0,1fr) 78px 64px;
+  }
+  .control-tabs {
+    height:31px;
+  }
+  .tab-controls {
+    padding-top:3px;
+    padding-bottom:6px;
+  }
+}
+
+@media(max-height:600px) and (min-width:651px) {
+  .editor {
+    grid-template-rows:58px 90px minmax(0,1fr) 67px;
+  }
+  .control-tabs {
+    height:31px;
+    padding-top:2px;
+  }
+  .tab-controls {
+    padding-bottom:3px;
+  }
+}

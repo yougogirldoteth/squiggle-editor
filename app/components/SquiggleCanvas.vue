@@ -2,16 +2,20 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue'
 import { buildGeometry, decodeHash, dragCurve, drawSquiggle, nearestCurvePoint, setByte } from '~/utils/squiggle'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   hash: string
   background: string
   playing: boolean
-}>()
+  speed?: number
+  selectedPoint?: number
+  showPoints?: boolean
+}>(), { speed: 1, showPoints: false })
 
 const emit = defineEmits<{
   'update:hash': [hash: string]
   'gesture-start': []
   'gesture-end': []
+  'select-point': [index: number]
 }>()
 
 const host = ref<HTMLDivElement>()
@@ -22,7 +26,7 @@ const renderHash = shallowRef(props.hash)
 const hovered = ref(false)
 const focused = ref(false)
 const dragging = ref(false)
-const selectedControl = ref(0)
+const selectedControl = ref(props.selectedPoint ?? 0)
 const instructionsId = useId()
 
 const geometry = computed(() => width.value > 0 && height.value > 0
@@ -30,7 +34,7 @@ const geometry = computed(() => width.value > 0 && height.value > 0
   : null)
 const controls = computed(() => geometry.value?.controls ?? [])
 const selection = computed(() => controls.value[Math.min(selectedControl.value, controls.value.length - 1)])
-const showGuides = computed(() => hovered.value || focused.value || dragging.value)
+const showGuides = computed(() => props.showPoints || hovered.value || focused.value || dragging.value)
 const selectionAnnouncement = computed(() => {
   if (!focused.value || !selection.value) return ''
   return `Point ${selectedControl.value + 1} of ${controls.value.length}, value ${decodeHash(renderHash.value).bytes[selection.value.byteIndex]}.`
@@ -44,6 +48,8 @@ interface PointerGesture {
   height: number
   segment: number
   t: number
+  pointByteIndex: number | null
+  pixelsPerByte: number
 }
 
 let pointerGesture: PointerGesture | null = null
@@ -62,7 +68,7 @@ function requestDraw() {
 function drawFrame(timestamp: number) {
   frame = null
   const animated = props.playing && !pointerGesture && keyboardStartHash === null
-  if (animated && previousFrame !== null) phase += Math.min(timestamp - previousFrame, 80) * 0.06
+  if (animated && previousFrame !== null) phase += Math.min(timestamp - previousFrame, 80) * 0.06 * props.speed
   previousFrame = animated ? timestamp : null
 
   const context = canvas.value?.getContext('2d')
@@ -83,6 +89,11 @@ function updateHash(hash: string) {
   requestDraw()
 }
 
+function selectControl(index: number) {
+  selectedControl.value = Math.max(0, Math.min(controls.value.length - 1, Math.round(index)))
+  emit('select-point', selectedControl.value)
+}
+
 function chooseClosestControl(x: number) {
   let closest = 0
   let distance = Infinity
@@ -93,7 +104,17 @@ function chooseClosestControl(x: number) {
       closest = i
     }
   }
-  selectedControl.value = closest
+  selectControl(closest)
+}
+
+function controlAtPoint(x: number, y: number) {
+  if (!props.showPoints) return null
+  let closest: { index: number; byteIndex: number; distance: number } | null = null
+  for (const [index, control] of controls.value.entries()) {
+    const distance = Math.hypot(control.x - x, control.y - y)
+    if (distance <= 18 && (!closest || distance < closest.distance)) closest = { index, byteIndex: control.byteIndex, distance }
+  }
+  return closest
 }
 
 function eventPoint(event: PointerEvent) {
@@ -105,8 +126,9 @@ function onPointerDown(event: PointerEvent) {
   if (!event.isPrimary || event.button !== 0 || pointerGesture || !canvas.value || !geometry.value) return
   finishKeyboardGesture()
   const point = eventPoint(event)
-  const nearest = nearestCurvePoint(renderHash.value, width.value, height.value, point.x, point.y)
-  if (nearest.distance > Math.max(28, geometry.value.pickRadius)) return
+  const handle = controlAtPoint(point.x, point.y)
+  const nearest = handle ? null : nearestCurvePoint(renderHash.value, width.value, height.value, point.x, point.y)
+  if (!handle && nearest!.distance > Math.max(28, geometry.value.pickRadius)) return
 
   event.preventDefault()
   canvas.value.focus({ preventScroll: true })
@@ -117,10 +139,13 @@ function onPointerDown(event: PointerEvent) {
     startClientY: event.clientY,
     width: width.value,
     height: height.value,
-    segment: nearest.segment,
-    t: nearest.t,
+    segment: nearest?.segment ?? 0,
+    t: nearest?.t ?? 0,
+    pointByteIndex: handle?.byteIndex ?? null,
+    pixelsPerByte: 2 * geometry.value.squigH / geometry.value.traits.ht / 255,
   }
-  chooseClosestControl(nearest.x)
+  if (handle) selectControl(handle.index)
+  else chooseClosestControl(nearest!.x)
   dragging.value = true
   previousFrame = null
   emit('gesture-start')
@@ -132,11 +157,23 @@ function onPointerMove(event: PointerEvent) {
     if (event.pointerId !== pointerGesture.pointerId) return
     event.preventDefault()
     const gesture = pointerGesture
-    updateHash(dragCurve(gesture.startHash, gesture.width, gesture.height, gesture.segment, gesture.t, event.clientY - gesture.startClientY))
+    const deltaY = event.clientY - gesture.startClientY
+    if (gesture.pointByteIndex !== null) {
+      const value = decodeHash(gesture.startHash).bytes[gesture.pointByteIndex]!
+      updateHash(setByte(gesture.startHash, gesture.pointByteIndex, value + deltaY / gesture.pixelsPerByte))
+    } else {
+      updateHash(dragCurve(gesture.startHash, gesture.width, gesture.height, gesture.segment, gesture.t, deltaY))
+    }
     return
   }
   if (event.pointerType === 'touch' || !canvas.value || !geometry.value) return
   const point = eventPoint(event)
+  const handle = controlAtPoint(point.x, point.y)
+  if (handle) {
+    hovered.value = true
+    if (!focused.value) selectControl(handle.index)
+    return
+  }
   const nearest = nearestCurvePoint(renderHash.value, width.value, height.value, point.x, point.y)
   hovered.value = nearest.distance <= Math.max(28, geometry.value.pickRadius)
   if (hovered.value && !focused.value) chooseClosestControl(nearest.x)
@@ -190,7 +227,7 @@ function onKeyDown(event: KeyboardEvent) {
   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
     finishKeyboardGesture()
     const step = event.key === 'ArrowLeft' ? -1 : 1
-    selectedControl.value = Math.max(0, Math.min(controls.value.length - 1, selectedControl.value + step))
+    selectControl(selectedControl.value + step)
     return
   }
 
@@ -266,10 +303,17 @@ function exportPng() {
 
 watch(() => props.hash, (hash) => {
   renderHash.value = hash
-  selectedControl.value = Math.min(selectedControl.value, Math.max(0, controls.value.length - 1))
+  const clamped = Math.min(selectedControl.value, Math.max(0, controls.value.length - 1))
+  if (clamped !== selectedControl.value) selectControl(clamped)
   requestDraw()
 })
-watch(() => [props.background, props.playing], () => {
+watch(() => props.selectedPoint, (index) => {
+  if (index === undefined) return
+  const clamped = Math.max(0, Math.min(controls.value.length - 1, Math.round(index)))
+  selectedControl.value = clamped
+  if (clamped !== index) emit('select-point', clamped)
+})
+watch(() => [props.background, props.playing, props.speed], () => {
   previousFrame = null
   requestDraw()
 })
@@ -281,7 +325,7 @@ onMounted(() => {
   if (host.value) resizeObserver.observe(host.value)
   window.addEventListener('resize', resizeCanvas)
   window.addEventListener('blur', onWindowBlur)
-  selectedControl.value = Math.floor(controls.value.length / 2)
+  selectControl(props.selectedPoint ?? Math.floor(controls.value.length / 2))
   requestDraw()
 })
 
