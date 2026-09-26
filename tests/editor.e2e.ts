@@ -500,8 +500,8 @@ test('visible handles on Color directly edit one point without shifting neighbor
   await expect(artworkHash(page)).toHaveValue(startHash)
 })
 
-test('genuine touch drags edit on phones and keep their position when the browser interrupts touch', async ({ browser }, testInfo) => {
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3021', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+test('genuine touch drags edit on phones and keep their position when the browser interrupts touch', async ({ browser, baseURL }, testInfo) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const page = await context.newPage()
   const errors = watchErrors(page)
   let completed = false
@@ -527,6 +527,19 @@ test('genuine touch drags edit on phones and keep their position when the browse
     })
     const session = await context.newCDPSession(page)
     // Use one ordered native touch stream for both the drag and the controls.
+    // Model a finger moving across frames, independent of the driver's speed.
+    // Undo still begins immediately after release, without a cooldown or retry.
+    const moveTouch = async (point: { x: number; y: number }, deltaY: number, id: number) => {
+      await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id }] })
+      await page.waitForTimeout(60)
+      for (const progress of [0.4, 0.75, 0.95, 1]) {
+        await session.send('Input.dispatchTouchEvent', {
+          type: 'touchMove', touchPoints: [{ x: point.x, y: point.y + deltaY * progress, id }],
+        })
+        await page.waitForTimeout(16)
+      }
+      await page.waitForTimeout(32)
+    }
     const tapControl = async (control: Locator) => {
       await expect(control).toBeVisible()
       await expect(control).toBeEnabled()
@@ -535,19 +548,18 @@ test('genuine touch drags edit on phones and keep their position when the browse
         type: 'touchStart',
         touchPoints: [{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, id: 4 }],
       })
+      await page.waitForTimeout(40)
       await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     }
     let point = await curvePosition(page)
-    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] })
-    await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y + 38, id: 1 }] })
+    await moveTouch(point, 38, 1)
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
     await tapControl(page.getByRole('button', { name: 'Undo', exact: true }))
     await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
 
     point = await curvePosition(page)
-    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 2 }] })
-    await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y - 25, id: 2 }] })
+    await moveTouch(point, -25, 2)
     await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
     const interruptedHash = await artworkHash(page).inputValue()
     await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
@@ -564,8 +576,7 @@ test('genuine touch drags edit on phones and keep their position when the browse
     for (const [index, direction] of [[0, 1], [lastIndex, -1]] as const) {
       const control = buildGeometry(endpointHash, bounds.width, bounds.height).controls[index]!
       point = { x: bounds.x + control.x, y: bounds.y + control.y }
-      await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 3 }] })
-      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y + 24 * direction, id: 3 }] })
+      await moveTouch(point, 24 * direction, 3)
       await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
       const edited = await artworkHash(page).inputValue()
       expect(changedBytes(endpointHash, edited)).toEqual([index])
