@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import EditorRange from '~/components/EditorRange.vue'
 import HashInput from '~/components/HashInput.vue'
+import { createLiveSketch, sketchLines, updateSketchInputs, readSketchInputs, isOriginalSketch, affectedScriptLines } from '~/utils/liveSketch'
 import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash, visibleStartHue, setStartingHue } from '~/utils/squiggle'
 import type { SquiggleType } from '~/utils/squiggle'
 import { HashHistory } from '~/utils/history'
+
+const CodePanel = defineAsyncComponent(() => import('~/components/CodePanel.vue'))
+const ScriptPreview = defineAsyncComponent(() => import('~/components/ScriptPreview.vue'))
 
 const history = reactive(new HashHistory(DEFAULT_HASH))
 const hash = ref(DEFAULT_HASH)
@@ -14,12 +18,99 @@ const hashDraft = ref(DEFAULT_HASH)
 const hashError = ref('')
 const playing = ref(false)
 const dragging = ref(false)
+const codeMode = ref(false)
 const background = ref('#ffffff')
 const grayLevels = [255, 225, 200, 175, 150, 125, 100, 75, 50, 25, 0]
 const backgrounds = grayLevels.map(gray => `#${gray.toString(16).padStart(2, '0').repeat(3)}`)
 const backgroundIndex = computed(() => backgrounds.indexOf(background.value))
 const swatches = [backgrounds[0]!, backgrounds[4]!, backgrounds[10]!]
 const speed = ref(1)
+const sketchView = () => ({ background: background.value, speed: speed.value, playing: playing.value })
+const codeInitialized = ref(false)
+const customRunning = ref(false)
+const codeDraft = ref('')
+const appliedCode = ref('')
+const previewSource = ref('')
+const previewRevision = ref(0)
+const scriptPreview = ref<{ exportPng: () => Promise<Blob> } | null>(null)
+const codeError = ref('')
+const highlightedLineIds = ref<string[]>([])
+const codeLines = computed(() => codeMode.value ? sketchLines(codeDraft.value) : [])
+const codeModified = computed(() => codeInitialized.value && !isOriginalSketch(codeDraft.value))
+const codePending = computed(() => codeDraft.value !== appliedCode.value)
+let syncingCodeInputs = false
+let previewTimer: ReturnType<typeof setTimeout> | undefined
+
+function canRenderNatively(source: string) {
+  if (!isOriginalSketch(source)) return false
+  const input = readSketchInputs(source)
+  return !!input.hash && !!input.background && backgrounds.includes(input.background)
+    && typeof input.speed === 'number' && input.speed >= 0.1 && input.speed <= 20
+    && typeof input.playing === 'boolean'
+}
+function editCode(source: string) {
+  codeDraft.value = source
+  highlightedLineIds.value = []
+}
+function runCode() {
+  clearTimeout(previewTimer)
+  codeError.value = ''
+  const source = codeDraft.value
+  const input = readSketchInputs(source)
+  syncingCodeInputs = true
+  try {
+    if (input.hash && input.hash !== hash.value) update(input.hash, true)
+    if (input.background && backgrounds.includes(input.background)) background.value = input.background
+    if (typeof input.speed === 'number' && input.speed >= 0.1 && input.speed <= 20) speed.value = input.speed
+    if (typeof input.playing === 'boolean') playing.value = input.playing
+  } finally { syncingCodeInputs = false }
+  appliedCode.value = source
+  customRunning.value = !canRenderNatively(source)
+  previewSource.value = source
+  previewRevision.value++
+  if (!customRunning.value) canvas.value?.resetPhase()
+}
+function resetCode() {
+  clearTimeout(previewTimer)
+  codeInitialized.value = true
+  customRunning.value = false
+  codeDraft.value = createLiveSketch(hash.value, sketchView()).source
+  appliedCode.value = codeDraft.value
+  previewSource.value = ''
+  codeError.value = ''
+  highlightedLineIds.value = []
+}
+async function exportArtwork() {
+  if (!customRunning.value) { canvas.value?.exportPng(); return }
+  try {
+    const blob = await scriptPreview.value?.exportPng()
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'squiggle-custom.png'
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error) { announce(error instanceof Error ? error.message : 'Could not export this sketch.') }
+}
+watch(codeMode, enabled => { if (enabled && !codeInitialized.value) resetCode() })
+watch([hash, background, speed, playing], ([nextHash, bg, nextSpeed, nextPlaying], [previousHash, oldBg, oldSpeed, oldPlaying]) => {
+  if (syncingCodeInputs || !codeInitialized.value) return
+  const view = { background: bg, speed: nextSpeed, playing: nextPlaying }
+  const oldView = { background: oldBg, speed: oldSpeed, playing: oldPlaying }
+  const changedInputs: ('hash' | 'background' | 'speed' | 'playing')[] = []
+  if (nextHash !== previousHash) changedInputs.push('hash')
+  if (bg !== oldBg) changedInputs.push('background')
+  if (nextSpeed !== oldSpeed) changedInputs.push('speed')
+  if (nextPlaying !== oldPlaying) changedInputs.push('playing')
+  codeDraft.value = updateSketchInputs(codeDraft.value, nextHash, view, changedInputs)
+  appliedCode.value = updateSketchInputs(appliedCode.value, nextHash, view, changedInputs)
+  highlightedLineIds.value = affectedScriptLines(previousHash, nextHash, oldView, view)
+  if (customRunning.value) {
+    clearTimeout(previewTimer)
+    previewTimer = setTimeout(() => { previewSource.value = appliedCode.value }, 160)
+  }
+}, { flush: 'sync' })
 const tabs = ['Color', 'Shape', 'Texture', 'View'] as const
 const activeTab = ref<typeof tabs[number]>('Color')
 const selectedPoint = ref(8)
@@ -81,23 +172,26 @@ function stateUrl() {
   url.searchParams.set('hash', hash.value)
   url.searchParams.set('bg', background.value.slice(1))
   url.searchParams.set('speed', String(speed.value))
+  if (codeMode.value) url.searchParams.set('code', '1')
+  else url.searchParams.delete('code')
   return url
 }
 function shortcut(event: KeyboardEvent) {
   const target = event.target as HTMLElement
-  if (target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && target.type !== 'range')) return
+  if (target.isContentEditable || target.closest('.cm-editor') || target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && target.type !== 'range')) return
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault()
     event.shiftKey ? redo() : undo()
   }
 }
-watch([hash, background, speed], () => {
+watch([hash, background, speed, codeMode], () => {
   if (!import.meta.client) return
   clearTimeout(urlTimer)
   urlTimer = setTimeout(() => window.history.replaceState(null, '', stateUrl()), 150)
 })
 onMounted(() => {
   const params = new URLSearchParams(window.location.search)
+  codeMode.value = params.get('code') === '1'
   const input = params.get('hash')
   if (input) {
     try { initialHash = toHash(parseHash(input)); history.value = initialHash; sync(initialHash) }
@@ -110,13 +204,13 @@ onMounted(() => {
   window.addEventListener('keydown', shortcut)
 })
 onBeforeUnmount(() => {
-  clearTimeout(noticeTimer); clearTimeout(urlTimer)
+  clearTimeout(noticeTimer); clearTimeout(urlTimer); clearTimeout(previewTimer)
   window.removeEventListener('keydown', shortcut)
 })
 </script>
 
 <template>
-  <div class="editor">
+  <div class="editor" :class="{ 'has-code': codeMode }">
     <header class="masthead">
       <div class="brand"><h1>Squiggle <span>Editor</span></h1></div>
       <div class="header-actions">
@@ -125,7 +219,7 @@ onBeforeUnmount(() => {
           <button class="icon-button" aria-label="Redo" title="Redo (⌘/Ctrl Shift Z)" :disabled="!history.canRedo" @click="redo"><EditorIcon name="redo" /></button>
         </div>
         <button class="new-button" title="Randomize squiggle" @click="randomize"><EditorIcon name="shuffle" /><span>New squiggle</span></button>
-        <button class="export-button" aria-label="Export PNG" title="Export PNG" @click="canvas?.exportPng()"><EditorIcon name="download" /><span>Export</span></button>
+        <button class="export-button" aria-label="Export PNG" title="Export PNG" @click="exportArtwork"><EditorIcon name="download" /><span>Export</span></button>
       </div>
     </header>
 
@@ -181,18 +275,24 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <main class="stage" :style="{ background }">
-      <SquiggleCanvas ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="history.begin(); dragging = true" @gesture-end="history.commit(); dragging = false" />
-      <div class="canvas-tools">
-        <div class="play-tools">
-          <button class="stage-button" :aria-label="playing ? 'Pause animation' : 'Play animation'" :title="playing ? 'Pause' : 'Play'" :aria-pressed="playing" @click="playing = !playing"><EditorIcon :name="playing ? 'pause' : 'play'" /></button>
-          <button class="stage-button" aria-label="Reset squiggle" title="Reset squiggle" @click="reset"><EditorIcon name="reset" /></button>
+    <div class="workspace" :class="{ 'with-code': codeMode }">
+      <main class="stage" :style="{ background }">
+        <ScriptPreview v-if="customRunning" :key="previewRevision" ref="scriptPreview" :source="previewSource" @error="codeError = $event" @ready="codeError = ''" />
+        <SquiggleCanvas v-else ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="history.begin(); dragging = true" @gesture-end="history.commit(); dragging = false" />
+        <span v-if="customRunning" class="custom-sketch-label">Custom code</span>
+        <div class="canvas-tools">
+          <div class="play-tools">
+            <button class="stage-button" :aria-label="playing ? 'Pause animation' : 'Play animation'" :title="playing ? 'Pause' : 'Play'" :aria-pressed="playing" @click="playing = !playing"><EditorIcon :name="playing ? 'pause' : 'play'" /></button>
+            <button class="stage-button" aria-label="Reset squiggle" title="Reset squiggle" @click="reset"><EditorIcon name="reset" /></button>
+            <button class="stage-button code-toggle" aria-label="Code mode" :title="codeMode ? 'Hide code' : 'Show code'" :aria-pressed="codeMode" aria-controls="live-code" @click="codeMode = !codeMode"><EditorIcon name="code" /><span>Code</span></button>
+          </div>
+          <div class="backgrounds" aria-label="Canvas background">
+            <button v-for="(bg, index) in swatches" :key="bg" :aria-label="`${['White', 'Gray', 'Dark'][index]} background`" :aria-pressed="background === bg" :title="`${['White', 'Gray', 'Dark'][index]} background`" :class="{ chosen: background === bg }" @click="background = bg"><span :style="{ background: bg }" /></button>
+          </div>
         </div>
-        <div class="backgrounds" aria-label="Canvas background">
-          <button v-for="(bg, index) in swatches" :key="bg" :aria-label="`${['White', 'Gray', 'Dark'][index]} background`" :aria-pressed="background === bg" :title="`${['White', 'Gray', 'Dark'][index]} background`" :class="{ chosen: background === bg }" @click="background = bg"><span :style="{ background: bg }" /></button>
-        </div>
-      </div>
-    </main>
+      </main>
+      <CodePanel v-if="codeMode" id="live-code" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :modified="codeModified" :pending="codePending" :error="codeError" title="sketch.js" @edit="editCode" @run="runCode" @reset="resetCode" />
+    </div>
 
     <div class="toast" role="status" aria-live="polite" :class="{ visible: notice }">{{ notice }}</div>
   </div>

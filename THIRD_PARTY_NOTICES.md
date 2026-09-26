@@ -11,13 +11,17 @@ The rendering implementation is a TypeScript/Canvas adaptation informed by these
 - [Snowfro's current Canvas renderer](https://snowfro.com/squiggle-render/sketch.js): an optimized native Canvas port used as a secondary reference.
 - [Snowfro's Chromie Squiggle project page](https://www.snowfro.com/projects/chromie-squiggle): artist attribution and project context.
 
-The 5,519-byte project script embedded in the Art Blocks generator had SHA-256:
+On September 26, 2026, the script was independently retrieved from Ethereum mainnet contract [`0x059edd72cd353df5106d2b9cc5ab83a52287ac3a`](https://etherscan.io/address/0x059edd72cd353df5106d2b9cc5ab83a52287ac3a#code), project 0, at finalized [block 26,062,124](https://etherscan.io/block/26062124). `projectScriptInfo(0)` identified one script, a locked project, and the `p5js` dependency at version `1.0.0`. `projectScriptByIndex(0, 0)` returned exactly the same 5,519 UTF-8 bytes as the Art Blocks generator, with SHA-256:
 
 ```text
 d6e475f342854bcc8424867a97965e1bca31b79971c71a21456d8c1a9b230390
 ```
 
-This identifies the retrieved script, excluding its HTML template, token data, and p5 library. The reference was fetched from Art Blocks' generator; it was not independently recovered from an Ethereum node for this project.
+The unmodified source is retained in `app/data/snowfro-script.js`. `app/data/snowfro-provenance.json` records the contract, chain, block number and hash, read calls, source digest, and comparison with the generator. The digest covers only Snowfro's project script, excluding the HTML template, token data, and p5 library.
+
+### Code mode
+
+Code mode displays `app/data/snowfro-script.formatted.js`, a formatting-only copy of the verified source produced with Prettier 3.8.1 for readability. The exact source remains available separately. The editor's generated token input and view-setting wrapper are distinct from Snowfro's script; they are not represented as part of the on-chain source. Custom code runs with the bundled p5 runtime rather than the editor's native Canvas adaptation.
 
 ### Collection examples
 
@@ -48,4 +52,42 @@ These notices preserve attribution and record the available license information.
 
 ## Dependencies
 
-Nuxt, Vue, and the development tools retain their respective licenses. Their resolved versions are recorded in `package-lock.json`; license texts are supplied by the installed packages. The original p5 runtime is a reference dependency of the Art Blocks generator, not a runtime dependency of this editor.
+### p5.js
+
+Code mode uses the p5.js dependency distributed as version **1.0.0**, matching the version specified by the on-chain project. The runtime, corresponding unminified source, and GNU Lesser General Public License version 2.1 text are bundled without modification:
+
+| Local file | Upstream source |
+| --- | --- |
+| `public/vendor/p5-1.0.0.min.js` | [cdnjs p5.js 1.0.0](https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.0.0/p5.min.js), also verified against [the npm package](https://unpkg.com/p5@1.0.0/lib/p5.min.js) |
+| `public/vendor/p5-1.0.0.js` | [Unminified p5.js source](https://unpkg.com/p5@1.0.0/lib/p5.js) |
+| `public/vendor/p5-LICENSE.txt` | [Upstream LGPL 2.1 license](https://unpkg.com/p5@1.0.0/license.txt) |
+
+The minified runtime has SHA-256 `3e0d5d8be7c1179dd16e1f68651fc5783d71b05cd32c2f7ade571a7350f489ab`. Both upstream JavaScript files carry a `p5.js v0.10.2 February 29, 2020` banner despite their 1.0.0 distribution URLs; that banner is preserved verbatim. The bundled unminified source includes upstream third-party notices.
+
+### CodeMirror and Lezer
+
+[CodeMirror 6](https://codemirror.net/) supplies the code editor and JavaScript language support; [Lezer](https://lezer.codemirror.net/) supplies syntax highlighting. The installed `codemirror`, `@codemirror/state`, `@codemirror/view`, `@codemirror/language`, `@codemirror/lang-javascript`, and `@lezer/highlight` packages are MIT-licensed. Exact package versions are recorded in `package-lock.json`.
+
+CodeMirror copyright (C) 2018–2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others. Lezer highlight copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others.
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in
+> all copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+> THE SOFTWARE.
+
+### Other dependencies
+
+Nuxt, Vue, and the development tools retain their respective licenses. Their resolved versions are recorded in `package-lock.json`; license texts are supplied by the installed packages.

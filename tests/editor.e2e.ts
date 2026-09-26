@@ -728,3 +728,216 @@ test('Texture controls are contextual and preserve every unrelated byte when edi
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await expect(artworkHash(page)).toHaveValue(ribbedHash)
 })
+
+async function copySketch(page: Page) {
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value: string) => { (window as any).copiedSketch = value } } }))
+  await page.getByRole('button', { name: 'Copy code', exact: true }).click()
+  return page.evaluate(() => (window as any).copiedSketch as string)
+}
+
+async function editSketch(page: Page, source: string) {
+  const code = page.getByRole('textbox', { name: 'JavaScript source' })
+  await code.click()
+  await code.press('ControlOrMeta+a')
+  if (source) await page.keyboard.insertText(source)
+  else await code.press('Backspace')
+}
+
+async function expectLineVisible(page: Page, line: ReturnType<Page['locator']>) {
+  await expect(line).toBeVisible()
+  await expect.poll(async () => {
+    const bounds = (await line.boundingBox())!
+    const viewport = (await page.locator('.cm-scroller').boundingBox())!
+    return bounds.y >= viewport.y && bounds.y + bounds.height <= viewport.y + viewport.height
+  }).toBe(true)
+}
+
+test('code mode displays the verified script and follows the original expressions when controls change', async ({ page }) => {
+  await openEditor(page)
+  const toggle = page.getByRole('button', { name: 'Code mode', exact: true })
+  await toggle.click()
+  const code = page.getByRole('textbox', { name: 'JavaScript source' })
+  await expect(code).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.cm-line.is-changed')).toHaveCount(0)
+  const canvasBounds = (await artwork(page).boundingBox())!
+  const panelBounds = (await page.locator('.code-panel').boundingBox())!
+  expect(panelBounds.x).toBeGreaterThan(canvasBounds.x + canvasBounds.width)
+  await settleCanvas(page)
+
+  const hue = page.getByRole('slider', { name: 'Starting hue' })
+  await hue.focus()
+  await hue.press('ArrowRight')
+  const updated = await artworkHash(page).inputValue()
+  const line = page.locator('.cm-line').filter({ hasText: 'let startColor = decPairs[29];' })
+  await expect(line).toHaveClass(/is-changed/)
+  await expectLineVisible(page, line)
+  await expect(hue).toBeFocused()
+  await expect(page).toHaveURL(/code=1/)
+  const source = await copySketch(page)
+  const original = (await readFile('app/data/snowfro-script.formatted.js', 'utf8')).trimEnd()
+  expect(source).toContain(original)
+  expect(source).toContain(`const editorHash = "${updated}";`)
+  await expect(page.getByRole('link', { name: 'On-chain', exact: true })).toBeVisible()
+  await toggle.click()
+  await expect(code).toHaveCount(0)
+  await expect(artworkHash(page)).toHaveValue(updated)
+})
+
+test('code mode keeps phone canvas, controls and editable source available together', async ({ page }) => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }, { width: 751, height: 1324 }, { width: 844, height: 390 }, { width: 568, height: 320 }]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/?code=1')
+    await expect(page.locator('.code-panel')).toBeInViewport({ ratio: 1 })
+    await expect(artwork(page)).toBeInViewport({ ratio: 1 })
+    const canvasBounds = (await artwork(page).boundingBox())!
+    expect(canvasBounds.width).toBeGreaterThan(150)
+    expect(canvasBounds.height).toBeGreaterThan(90)
+    for (const name of ['Code mode', 'Copy code', 'Run code', 'Play animation', 'Reset squiggle', ...TYPES]) await expect(page.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 })
+    for (const tab of ['Color', 'Shape', 'Texture', 'View']) {
+      await page.getByRole('tab', { name: tab, exact: true }).click()
+      await expect(page.getByRole('tabpanel', { name: tab, exact: true })).toBeInViewport({ ratio: 1 })
+    }
+    expect(await page.evaluate(() => [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight])).toEqual([0, 0])
+    await page.getByRole('tab', { name: 'View', exact: true }).click()
+    await settleCanvas(page)
+    await page.getByRole('slider', { name: 'Speed', exact: true }).focus()
+    await page.getByRole('slider', { name: 'Speed', exact: true }).press('ArrowRight')
+    const line = page.locator('[data-line-id="view-speed"]')
+    await expect(line).toHaveClass(/is-changed/)
+    await expectLineVisible(page, line)
+  }
+})
+
+test('code following respects manual scrolling and reduced motion during rapid edits', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/?code=1')
+  const code = page.locator('.cm-scroller')
+  await expect(code).toBeVisible()
+  await settleCanvas(page)
+  await code.evaluate(element => {
+    element.dispatchEvent(new WheelEvent('wheel', { deltaY: 500, bubbles: true }))
+    element.scrollTop = element.scrollHeight
+  })
+  await settleCanvas(page)
+  const scrollTop = await code.evaluate(element => element.scrollTop)
+  await page.getByRole('slider', { name: 'Starting hue' }).evaluate(async element => {
+    const input = element as HTMLInputElement
+    for (const value of [20, 40, 60, 80, 100]) {
+      input.value = String(value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    }
+  })
+  await page.waitForTimeout(300)
+  expect(await code.evaluate(element => element.scrollTop)).toBe(scrollTop)
+  expect(await page.locator('.code-panel').evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0)
+  const source = await copySketch(page)
+  expect(source).toContain(`const editorHash = "${await page.locator('#hash').inputValue()}";`)
+})
+
+test('code edits can update the hash, run custom drawing logic, preserve drafts and return to the original', async ({ page }) => {
+  await page.goto('/?code=1')
+  await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+  const original = await copySketch(page)
+  const updatedHash = setByte(DEFAULT_HASH, 29, 90)
+  await editSketch(page, original.replace(DEFAULT_HASH, updatedHash))
+  await page.getByRole('textbox', { name: 'JavaScript source' }).press('ControlOrMeta+Enter')
+  await expect(artworkHash(page)).toHaveValue(updatedHash)
+  await expect(artwork(page)).toBeVisible()
+  await expect(page.locator('iframe')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
+
+  const current = await copySketch(page)
+  const custom = current.replace('let wt = 2;', 'let wt = 4;') + '\ndocument.body.dataset.width = String(wt);'
+  await editSketch(page, custom)
+  await expect(artwork(page)).toBeVisible()
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  const frame = page.frameLocator('iframe')
+  await expect(frame.locator('canvas')).toBeVisible()
+  await expect(page.locator('iframe')).toHaveAttribute('sandbox', 'allow-scripts')
+  await expect(artwork(page)).toHaveCount(0)
+  await expect(page.getByText('Custom code', { exact: true })).toBeVisible()
+  expect(await frame.locator('canvas').evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL())).toMatch(/^data:image\/png/)
+
+  // A new draft must not run just because a form control updates the committed code.
+  await editSketch(page, custom.replace('let wt = 4;', 'let wt = 6;'))
+  await page.getByRole('slider', { name: 'Starting hue' }).press('ArrowRight')
+  await expect(frame.locator('body')).toHaveAttribute('data-width', '4')
+  expect(await copySketch(page)).toContain('let wt = 6;')
+  await page.getByRole('button', { name: 'Code mode', exact: true }).click()
+  await expect(frame.locator('canvas')).toBeVisible()
+  await page.getByRole('button', { name: 'Code mode', exact: true }).click()
+  expect(await copySketch(page)).toContain('let wt = 6;')
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute('data-width', '6')
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export PNG', exact: true }).click()
+  expect((await download).suggestedFilename()).toBe('squiggle-custom.png')
+  for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport)
+    await expect.poll(async () => {
+      const canvas = await page.frameLocator('iframe').locator('canvas').boundingBox()
+      const iframe = await page.locator('iframe').boundingBox()
+      if (!canvas || !iframe) return false
+      return canvas.width <= iframe.width + 1 && canvas.height <= iframe.height + 1
+    }).toBe(true)
+    await expect(page.getByRole('button', { name: 'Reset original code', exact: true })).toBeInViewport({ ratio: 1 })
+  }
+  await page.getByRole('button', { name: 'Reset original code', exact: true }).click()
+  await expect(artwork(page)).toBeVisible()
+  await expect(page.locator('iframe')).toHaveCount(0)
+  expect(await copySketch(page)).toContain('let wt = 2;')
+})
+
+test('custom code errors stay recoverable and edited scripts cannot reach the editor document', async ({ page }) => {
+  await page.goto('/?code=1')
+  await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+  await editSketch(page, 'function setup( {')
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  await expect(page.locator('.code-panel__error')).toContainText(/Unexpected|SyntaxError/)
+  await editSketch(page, 'function setup() { throw new Error("Try another shape"); }')
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  await expect(page.locator('.code-panel__error')).toContainText('Try another shape')
+  await editSketch(page, `function setup() {
+    createCanvas(160, 100);
+    background(220);
+    try { parent.document.body.dataset.changedBySketch = 'yes'; }
+    catch { document.body.dataset.isolated = 'yes'; }
+  }`)
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute('data-isolated', 'yes')
+  expect(await page.locator('body').getAttribute('data-changed-by-sketch')).toBeNull()
+  await expect(page.locator('.code-panel__error')).toBeEmpty()
+  await page.getByRole('button', { name: 'Reset original code', exact: true }).click()
+  await expect(artwork(page)).toBeVisible()
+})
+
+
+test('unrelated controls preserve pending code inputs and an empty draft survives closing the pane', async ({ page }) => {
+  await page.goto('/?code=1')
+  await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+  const original = await copySketch(page)
+  const draftHash = setByte(DEFAULT_HASH, 29, 45)
+  await editSketch(page, original.replace(DEFAULT_HASH, draftHash).replace('const editorSpeed = 1;', 'const editorSpeed = 3;'))
+  await page.getByRole('button', { name: 'Gray background', exact: true }).click()
+  const after = await copySketch(page)
+  expect(after).toContain(draftHash)
+  expect(after).toContain('const editorSpeed = 3;')
+  expect(after).toContain('const editorBackground = "#969696";')
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  await expect(artworkHash(page)).toHaveValue(draftHash)
+  await page.getByRole('tab', { name: 'View', exact: true }).click()
+  await expect(page.getByRole('slider', { name: 'Speed', exact: true })).toHaveValue('3')
+
+  await editSketch(page, '')
+  await page.getByRole('button', { name: 'Code mode', exact: true }).click()
+  await page.getByRole('button', { name: 'Code mode', exact: true }).click()
+  expect(await copySketch(page)).toBe('')
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  await expect(page.locator('.code-panel__error')).toContainText('did not create a canvas')
+  await expect(artwork(page)).toHaveCount(0)
+  await page.getByRole('button', { name: 'Reset original code', exact: true }).click()
+  await expect(artwork(page)).toBeVisible()
+})

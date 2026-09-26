@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "project": "Chromie Squiggle",
+  "artist": "Snowfro",
+  "chainId": 1,
+  "contractAddress": "0x059edd72cd353df5106d2b9cc5ab83a52287ac3a",
+  "projectId": 0,
+  "retrievedAt": "2026-09-26T14:24:55.475Z",
+  "block": {
+    "number": 26062124,
+    "hash": "0xe66a25d06342a34eceae4a1f251f00c9da53b42d4868b120004a4220660f8a95",
+    "timestamp": "2026-09-26T14:08:23.000Z",
+    "selection": "finalized"
+  },
+  "contractCodeKeccak256": "0x4d896843bb92514923a46587a942e2927711f6835a6af4d10b4b538e311bf3a9",
+  "scriptInfo": {
+    "scriptJSON": "{\"type\":\"p5js\",\"version\":\"1.0.0\",\"instructions\":\"click to animate | space bar changes background color\",\"aspectRatio\":\"1.5\",\"interactive\":\"true\",\"curation_status\":\"curated\"}",
+    "scriptCount": 1,
+    "hashes": 1,
+    "ipfsHash": "",
+    "locked": true,
+    "paused": true
+  },
+  "script": {
+    "file": "snowfro-script.js",
+    "encoding": "UTF-8",
+    "bytes": 5519,
+    "sha256": "d6e475f342854bcc8424867a97965e1bca31b79971c71a21456d8c1a9b230390",
+    "reconstruction": "Concatenate projectScriptByIndex(0, index) strings in ascending index order, without separators or normalization.",
+    "chunks": [
+      {
+        "index": 0,
+        "bytes": 5519,
+        "sha256": "d6e475f342854bcc8424867a97965e1bca31b79971c71a21456d8c1a9b230390"
+      }
+    ]
+  },
+  "checks": {
+    "projectIdentityMatches": true,
+    "tokenZeroProjectId": 0,
+    "tokenZeroHash": "0x722899b10c66da3b72fb60a8e71df442ee1c004547ba2227d76bed357469b4ea",
+    "generatorScriptBytes": 5519,
+    "generatorScriptSha256": "d6e475f342854bcc8424867a97965e1bca31b79971c71a21456d8c1a9b230390",
+    "generatorByteForByteMatch": true,
+    "blockHashStableDuringRetrieval": true
+  },
+  "license": "NFT License",
+  "sources": {
+    "verifiedContractAbi": "https://etherscan.io/address/0x059edd72cd353df5106d2b9cc5ab83a52287ac3a#code",
+    "contractReadInterface": "https://etherscan.io/address/0x059edd72cd353df5106d2b9cc5ab83a52287ac3a#readContract",
+    "block": "https://etherscan.io/block/26062124",
+    "tokenMetadata": "https://token.artblocks.io/1/0x059edd72cd353df5106d2b9cc5ab83a52287ac3a/0",
+    "generator": "https://generator.artblocks.io/1/0x059edd72cd353df5106d2b9cc5ab83a52287ac3a/0",
+    "artistProject": "https://www.snowfro.com/projects/chromie-squiggle"
+  },
+  "readCalls": [
+    {
+      "method": "projectScriptInfo",
+      "arguments": [
+        0
+      ],
+      "data": "0x4aa6d4170000000000000000000000000000000000000000000000000000000000000000",
+      "resultSha256": "cdc022b38c516b0f26fbf69e02ca1aa4d7a62eff16621d508d79af797c79d006"
+    },
+    {
+      "method": "showTokenHashes",
+      "arguments": [
+        0
+      ],
+      "data": "0x271aaab40000000000000000000000000000000000000000000000000000000000000000",
+      "resultSha256": "93e6aa52147dac68536fca02b5fadf96ca17e12cad25cdc48d288676d91cd6b5"
+    },
+    {
+      "method": "projectDetails",
+      "arguments": [
+        0
+      ],
+      "data": "0x8dd91a560000000000000000000000000000000000000000000000000000000000000000",
+      "resultSha256": "8a8ec588b67d9710eb193362caf55b71ed01cb69998485d267687ff0432e4520"
+    },
+    {
+      "method": "tokenIdToProjectId",
+      "arguments": [
+        0
+      ],
+      "data": "0x1b689c0b0000000000000000000000000000000000000000000000000000000000000000",
+      "resultSha256": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
+    },
+    {
+      "method": "projectScriptByIndex",
+      "arguments": [
+        0,
+        0
+      ],
+      "data": "0x8c3c9cdd00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "resultSha256": "5edcdc5d8d44ce6cecb689331b96d768aa5cc31158e94ff0bca543da4d823a48"
+    }
+  ]
+}
