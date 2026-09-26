@@ -24,6 +24,11 @@ async function openEditor(page: Page) {
   await page.goto('/')
   await expect(artwork(page)).toBeVisible()
   await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
+  // SSR already contains the controls. Wait for the mounted canvas to paint
+  // before sending input, so hydration cannot discard the first interaction.
+  await expect.poll(() => artwork(page).evaluate(element =>
+    (element as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, 1, 1).data[3],
+  )).toBe(255)
   await settleCanvas(page)
 }
 
