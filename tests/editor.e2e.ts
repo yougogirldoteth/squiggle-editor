@@ -704,9 +704,14 @@ test('interrupted drags keep the last position through capture loss, resizing an
     await page.mouse.move(point.x, point.y)
     await page.mouse.down()
     await page.mouse.move(point.x, point.y + 32, { steps: 4 })
+    await settleCanvas(page)
     await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
     const moved = await artworkHash(page).inputValue()
-    if (interruption === 'capture') await artwork(page).evaluate(element => element.releasePointerCapture(Number(element.getAttribute('data-test-pointer-id'))))
+    if (interruption === 'capture') {
+      await artwork(page).evaluate(element => element.releasePointerCapture(Number(element.getAttribute('data-test-pointer-id'))))
+      // Native lostpointercapture is delivered with the next pointer event.
+      await page.mouse.move(point.x + 1, point.y + 32)
+    }
     if (interruption === 'resize') await page.setViewportSize({ width: 1440, height: 850 })
     if (interruption === 'blur') await page.evaluate(() => window.dispatchEvent(new Event('blur')))
     await expect(page.locator('.squiggle-canvas')).not.toHaveClass(/is-dragging/)
