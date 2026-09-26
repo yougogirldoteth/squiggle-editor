@@ -12,9 +12,9 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'Squiggle Editor — a little room for color',
+      title: 'Squiggle Editor',
       meta: [
-        { name: 'description', content: 'An independent playground for the Chromie Squiggle algorithm by Snowfro. Shape a curve, explore color, and keep every edit in its hash.' },
+        { name: 'description', content: 'An independent editor for the Chromie Squiggle algorithm by Snowfro. Edit the shape, colors, and texture, or run custom code.' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'theme-color', content: '#f7f7f2' },
       ],

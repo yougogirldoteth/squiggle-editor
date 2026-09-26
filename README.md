@@ -1,6 +1,6 @@
 # Squiggle Editor
 
-A little room for color. Explore the Chromie Squiggle algorithm by Snowfro: pull the curve, change its colors and texture, or open the original script and experiment with the code.
+Explore the Chromie Squiggle algorithm by Snowfro: pull the curve, change its colors and texture, or open the original script and experiment with the code.
 
 **[Open the editor →](https://squiggle.worldcomputer.art)**
 
