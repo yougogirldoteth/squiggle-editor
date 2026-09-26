@@ -25,6 +25,8 @@ const height = ref(0)
 const renderHash = shallowRef(props.hash)
 const hovered = ref(false)
 const focused = ref(false)
+const keyboardFocused = ref(false)
+const guidesDismissed = ref(false)
 const dragging = ref(false)
 const selectedControl = ref(props.selectedPoint ?? 0)
 const instructionsId = useId()
@@ -34,7 +36,7 @@ const geometry = computed(() => width.value > 0 && height.value > 0
   : null)
 const controls = computed(() => geometry.value?.controls ?? [])
 const selection = computed(() => controls.value[Math.min(selectedControl.value, controls.value.length - 1)])
-const showGuides = computed(() => props.showPoints || hovered.value || focused.value || dragging.value)
+const showGuides = computed(() => !guidesDismissed.value && (props.showPoints || hovered.value || focused.value || dragging.value))
 const selectionAnnouncement = computed(() => {
   if (!focused.value || !selection.value) return ''
   return `Point ${selectedControl.value + 1} of ${controls.value.length}, value ${decodeHash(renderHash.value).bytes[selection.value.byteIndex]}.`
@@ -139,6 +141,8 @@ function eventPoint(event: PointerEvent) {
 
 function onPointerDown(event: PointerEvent) {
   if (!event.isPrimary || event.button !== 0 || pointerGesture || !canvas.value || !geometry.value) return
+  guidesDismissed.value = false
+  keyboardFocused.value = false
   finishKeyboardGesture()
   const point = eventPoint(event)
   const handle = controlAtPoint(point.x, point.y)
@@ -147,6 +151,7 @@ function onPointerDown(event: PointerEvent) {
 
   event.preventDefault()
   canvas.value.focus({ preventScroll: true })
+  keyboardFocused.value = false
   canvas.value.setPointerCapture(event.pointerId)
   pendingClientY = null
   pendingHover = null
@@ -179,12 +184,14 @@ function onPointerMove(event: PointerEvent) {
     return
   }
   if (event.pointerType === 'touch' || !canvas.value || !geometry.value) return
+  guidesDismissed.value = false
   pendingHover = eventPoint(event)
   requestDraw(false)
 }
 
 // Fit once per displayed frame, always from the gesture's original hash.
-// Releasing flushes the last event; cancelling discards it entirely.
+// Releases and browser interruptions retain the last movement. Only Escape
+// explicitly discards the gesture and restores its starting hash.
 function flushPointerMove() {
   if (pendingClientY === null || !pointerGesture) return
   const gesture = pointerGesture
@@ -233,7 +240,8 @@ function onPointerUp(event: PointerEvent) {
 }
 
 function onPointerCancel(event: PointerEvent) {
-  if (event.pointerId === pointerGesture?.pointerId) finishPointerGesture(true)
+  // Cancellation/lost-capture coordinates are not a new pointer sample.
+  if (event.pointerId === pointerGesture?.pointerId) finishPointerGesture()
 }
 
 function finishKeyboardGesture(cancel = false) {
@@ -257,6 +265,8 @@ function onKeyDown(event: KeyboardEvent) {
     return
   }
   if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
+  guidesDismissed.value = false
+  keyboardFocused.value = true
   event.preventDefault()
   event.stopPropagation()
   if (pointerGesture || !controls.value.length) return
@@ -284,16 +294,29 @@ function onKeyUp(event: KeyboardEvent) {
 
 function onFocus() {
   focused.value = true
+  guidesDismissed.value = false
+  keyboardFocused.value = canvas.value?.matches(':focus-visible') ?? false
 }
 
 function onBlur() {
   focused.value = false
+  keyboardFocused.value = false
   finishKeyboardGesture()
 }
 
 function onWindowBlur() {
-  finishPointerGesture(true)
+  finishPointerGesture()
   finishKeyboardGesture()
+}
+
+function onOutsidePointerDown(event: PointerEvent) {
+  if (!event.isPrimary || !canvas.value || event.composedPath().includes(canvas.value)) return
+  finishPointerGesture()
+  finishKeyboardGesture()
+  guidesDismissed.value = true
+  hovered.value = false
+  pendingHover = null
+  if (document.activeElement === canvas.value) canvas.value.blur()
 }
 
 function resizeCanvas() {
@@ -303,7 +326,7 @@ function resizeCanvas() {
   const nextHeight = rect.height
   const nextRatio = Math.min(window.devicePixelRatio || 1, 3)
   if (nextWidth === width.value && nextHeight === height.value && nextRatio === pixelRatio) return
-  finishPointerGesture(true)
+  finishPointerGesture()
   width.value = nextWidth
   height.value = nextHeight
   pixelRatio = nextRatio
@@ -370,6 +393,7 @@ onMounted(() => {
   if (host.value) resizeObserver.observe(host.value)
   window.addEventListener('resize', resizeCanvas)
   window.addEventListener('blur', onWindowBlur)
+  window.addEventListener('pointerdown', onOutsidePointerDown, true)
   selectControl(props.selectedPoint ?? Math.floor(controls.value.length / 2))
   requestDraw()
 })
@@ -379,8 +403,9 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   window.removeEventListener('resize', resizeCanvas)
   window.removeEventListener('blur', onWindowBlur)
+  window.removeEventListener('pointerdown', onOutsidePointerDown, true)
   if (frame !== null) cancelAnimationFrame(frame)
-  finishPointerGesture(true)
+  finishPointerGesture()
   finishKeyboardGesture()
 })
 
@@ -415,8 +440,8 @@ defineExpose({ exportPng, resetPhase })
         :key="control.byteIndex"
         :cx="control.x"
         :cy="control.y"
-        :r="index === selectedControl ? 5 : 3"
-        :class="{ 'is-selected': index === selectedControl, 'is-active': dragging && index === selectedControl }"
+        :r="index === selectedControl ? (keyboardFocused ? 6 : 5) : 3"
+        :class="{ 'is-selected': index === selectedControl, 'is-active': dragging && index === selectedControl, 'is-keyboard': keyboardFocused && index === selectedControl }"
       />
     </svg>
     <p :id="instructionsId" class="squiggle-canvas__sr-only">Drag the curve up or down. Control points stay evenly spaced. Use Left and Right to select a point, then Up and Down to move it. Hold Shift for larger changes. Escape cancels a drag.</p>
@@ -447,11 +472,6 @@ defineExpose({ exportPng, resetPhase })
   outline: none;
 }
 
-.squiggle-canvas__art:focus-visible {
-  outline: 2px solid var(--accent, #5e6a57);
-  outline-offset: -4px;
-}
-
 .is-hovered .squiggle-canvas__art { cursor: grab; }
 .is-dragging .squiggle-canvas__art { cursor: grabbing; }
 
@@ -480,6 +500,13 @@ defineExpose({ exportPng, resetPhase })
   fill: #272725;
   fill-opacity: 1;
   stroke: #fff;
+}
+
+.squiggle-canvas__guides circle.is-keyboard {
+  fill: #e0e7d7;
+  fill-opacity: 1;
+  stroke: var(--accent, #5e6a57);
+  stroke-width: 2.5;
 }
 
 .squiggle-canvas__sr-only {

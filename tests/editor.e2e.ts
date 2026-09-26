@@ -495,7 +495,7 @@ test('visible handles on Color directly edit one point without shifting neighbor
   await expect(artworkHash(page)).toHaveValue(startHash)
 })
 
-test('genuine touch drags edit on phones and touch cancellation restores the starting hash', async ({ browser }) => {
+test('genuine touch drags edit on phones and keep their position when the browser interrupts touch', async ({ browser }) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3021', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const page = await context.newPage()
   const errors = watchErrors(page)
@@ -514,7 +514,10 @@ test('genuine touch drags edit on phones and touch cancellation restores the sta
     await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 2 }] })
     await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y - 25, id: 2 }] })
     await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
+    const interruptedHash = await artworkHash(page).inputValue()
     await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+    await expect(artworkHash(page)).toHaveValue(interruptedHash)
+    await page.getByRole('button', { name: 'Undo', exact: true }).tap()
     await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
 
     await page.getByRole('tab', { name: 'Shape', exact: true }).tap()
@@ -604,7 +607,7 @@ test('print exports match across viewports and contain extreme marks of every ty
   expect(bounds.maxY).toBeLessThan(1999)
 })
 
-test('Fuzzy mouse and touch bursts flush the final release before RAF and cancel pending movement as one gesture', async ({ browser, page }) => {
+test('Fuzzy mouse and touch bursts flush release and interrupted movement as one undoable gesture', async ({ browser, page }) => {
   test.setTimeout(120_000)
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3021', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const touchPage = await context.newPage()
@@ -671,8 +674,13 @@ test('Fuzzy mouse and touch bursts flush the final release before RAF and cancel
       else await touchSession.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y + 10, id: 1 }] })
       await settleCanvas(target)
       await expect(artworkHash(target)).not.toHaveValue(fuzzy)
-      await burst(true)
+      const interrupted = await burst(true)
       await release(true)
+      const interruptedPoint = nearestCurvePoint(fuzzy, interrupted.width, interrupted.height, interrupted.x, interrupted.y)
+      await expect(artworkHash(target)).toHaveValue(dragCurve(fuzzy, interrupted.width, interrupted.height, interruptedPoint.segment, interruptedPoint.t, 29))
+      await expect(undo).toBeEnabled()
+      if (kind === 'touch') await undo.tap()
+      else await undo.click()
       await expect(artworkHash(target)).toHaveValue(fuzzy)
       await expect(undo).toBeDisabled()
     }
@@ -681,6 +689,62 @@ test('Fuzzy mouse and touch bursts flush the final release before RAF and cancel
   } finally {
     await context.close()
   }
+})
+
+test('interrupted drags keep the last position through capture loss, resizing and window blur', async ({ page }) => {
+  for (const interruption of ['capture', 'resize', 'blur'] as const) {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await openEditor(page)
+    const point = await curvePosition(page)
+    await artwork(page).evaluate(element => {
+      element.addEventListener('pointerdown', event => {
+        element.setAttribute('data-test-pointer-id', String((event as PointerEvent).pointerId))
+      }, { once: true })
+    })
+    await page.mouse.move(point.x, point.y)
+    await page.mouse.down()
+    await page.mouse.move(point.x, point.y + 32, { steps: 4 })
+    await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
+    const moved = await artworkHash(page).inputValue()
+    if (interruption === 'capture') await artwork(page).evaluate(element => element.releasePointerCapture(Number(element.getAttribute('data-test-pointer-id'))))
+    if (interruption === 'resize') await page.setViewportSize({ width: 1440, height: 850 })
+    if (interruption === 'blur') await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+    await expect(page.locator('.squiggle-canvas')).not.toHaveClass(/is-dragging/)
+    await expect(artworkHash(page)).toHaveValue(moved)
+    await page.mouse.up()
+    await expect(artworkHash(page)).toHaveValue(moved)
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled()
+  }
+})
+
+test('clicking outside the canvas clears handles even on Shape and canvas focus never adds a frame', async ({ page }) => {
+  await page.goto('/?code=1')
+  await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Shape', exact: true }).click()
+  for (const target of [
+    page.getByRole('heading', { name: 'Squiggle Editor' }),
+    page.getByRole('slider', { name: 'Height', exact: true }),
+    page.getByRole('button', { name: 'White background', exact: true }),
+    page.getByRole('textbox', { name: 'JavaScript source' }),
+  ]) {
+    const point = await curvePosition(page)
+    await page.mouse.click(point.x, point.y)
+    await expect(page.locator('.squiggle-canvas__guides')).toBeVisible()
+    expect(await artwork(page).evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
+    await target.click()
+    await expect(page.locator('.squiggle-canvas__guides')).toHaveCount(0)
+    await expect(artwork(page)).not.toBeFocused()
+  }
+  await page.keyboard.press('Tab')
+  await artwork(page).focus()
+  await expect(page.locator('.squiggle-canvas__guides circle.is-selected')).toBeVisible()
+  expect(await artwork(page).evaluate(element => getComputedStyle(element).outlineStyle)).toBe('none')
+  await artwork(page).press('ArrowRight')
+  const before = await artworkHash(page).inputValue()
+  await artwork(page).press('ArrowUp')
+  await expect(artworkHash(page)).not.toHaveValue(before)
 })
 
 test('Shape controls update only their represented byte, preserve selection, and undo cleanly', async ({ page }) => {
