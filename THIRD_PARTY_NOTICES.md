@@ -1,5 +1,18 @@
 # Third-party notices
 
+## License scope
+
+The root [MIT license](LICENSE) applies only to this project's original contributions, including the editor interface, integration code, and documentation. It does not relicense the following material:
+
+| Material | Location and status |
+| --- | --- |
+| Snowfro's original script | `app/data/snowfro-script.js` and its formatting-only copy, `app/data/snowfro-script.formatted.js`. No general software redistribution license has been established by this project. |
+| Derived algorithm and artwork | The Snowfro-derived rendering portions of `app/utils/squiggle.ts`, any corresponding derived material in tests, and Chromie Squiggle artwork retain the original rights. |
+| p5.js | `public/vendor/p5-1.0.0.js`, `public/vendor/p5-1.0.0.min.js`, and `public/vendor/p5-LICENSE.txt`; LGPL 2.1, with upstream notices preserved. |
+| Installed dependencies | Each dependency retains its own license, distributed with its package. The lockfile records the exact versions. |
+
+Publishing source on-chain or making it available to read does not itself establish a software redistribution grant. Before a public repository release, confirm the applicable permission for Snowfro's source and the derived renderer. This project's MIT grant does not resolve that separate question.
+
 ## Chromie Squiggle
 
 Chromie Squiggle and its original algorithm are by **Snowfro**, released as Art Blocks Project #0 in 2020. Squiggle Editor is an independent local editor and is not affiliated with or endorsed by Snowfro or Art Blocks.
@@ -48,7 +61,7 @@ The original p5 renderer and Snowfro's newer Canvas port are distinct implementa
 
 Art Blocks' token metadata labels the artwork license **“NFT License.”** Its collection metadata supplies no license URL. Neither inspected renderer included an explicit permissive software license. Snowfro's project page describes its downloadable token images as free to integrate; this does not supply an explicit software license for the algorithm.
 
-These notices preserve attribution and record the available license information. This project does not grant or relicense rights to Snowfro's algorithm, artworks, or third-party names. No blanket open-source license is asserted for that material.
+These notices preserve attribution and record the available license information. This project does not grant or relicense rights to Snowfro's algorithm, artworks, or third-party names. No blanket open-source license is asserted for that material. The license label was rechecked against the [Art Blocks token metadata](https://token.artblocks.io/0) on September 26, 2026.
 
 ## Dependencies
 
@@ -66,7 +79,7 @@ The minified runtime has SHA-256 `3e0d5d8be7c1179dd16e1f68651fc5783d71b05cd32c2f
 
 ### CodeMirror and Lezer
 
-[CodeMirror 6](https://codemirror.net/) supplies the code editor and JavaScript language support; [Lezer](https://lezer.codemirror.net/) supplies syntax highlighting. The installed `codemirror`, `@codemirror/state`, `@codemirror/view`, `@codemirror/language`, `@codemirror/lang-javascript`, and `@lezer/highlight` packages are MIT-licensed. Exact package versions are recorded in `package-lock.json`.
+[CodeMirror 6](https://codemirror.net/) supplies the code editor and JavaScript language support; [Lezer](https://lezer.codemirror.net/) supplies parsing and syntax highlighting. The installed `codemirror`, `@codemirror/state`, `@codemirror/view`, `@codemirror/language`, `@codemirror/lang-javascript`, `@lezer/common`, and `@lezer/highlight` packages are MIT-licensed. Exact package versions are recorded in `package-lock.json`.
 
 CodeMirror copyright (C) 2018–2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others. Lezer highlight copyright (C) 2018 by Marijn Haverbeke <marijn@haverbeke.berlin> and others.
 
