@@ -53,8 +53,6 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
 .type-button { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 64px; padding: var(--space-2) var(--space-3); text-align: left; border: 1px solid transparent; border-radius: var(--radius); font-size: 12px; }
 .type-button .type-preview { width: 60px; height: 40px; flex-shrink: 0; }
 .type-button.selected { background: #fff; border-color: #cbd5bd; }
-.selected-dot { width: 4px; height: 4px; margin-left: auto; border-radius: 50%; background: transparent; flex-shrink: 0; }
-.selected .selected-dot { background: var(--accent); }
 .controls-area { grid-area: controls; display: flex; flex-direction: column; min-width: 0; }
 .control-tabs { display: flex; align-items: stretch; gap: var(--space-6); height: 36px; flex-shrink: 0; border-bottom: 1px solid var(--line); }
 .control-tabs button { font-size: 12px; padding: 0; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -165,7 +163,6 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
   .type-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-1); height: 100%; }
   .type-button { flex-direction: column; justify-content: center; gap: var(--space-1); padding: var(--space-1) 0; min-height: 0; font-size: 10px; }
   .type-button .type-preview { width: 42px; height: 28px; }
-  .selected-dot { display: none; }
   .canvas-tools { bottom: var(--space-3); left: var(--space-3); right: var(--space-3); }
   .toast { bottom: 100px; }
 }
@@ -199,7 +196,7 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
   .hash-section { --hash-font-size: clamp(9.5px, 2vw, 13px); }
   .hash-bar { grid-template-columns: minmax(0, 1fr) 32px; gap: var(--space-2); padding: var(--space-1) 6px var(--space-1) var(--space-3); }
   .hash-action { width: 32px; height: 32px; }
-  .type-heading, .selected-dot { display: none; }
+  .type-heading { display: none; }
   .type-button { font-size: 11px; }
   .type-button .type-preview { width: 36px; }
   .control-tabs { gap: var(--space-4); }

@@ -103,7 +103,9 @@ function updateHash(hash: string) {
 }
 
 function selectControl(index: number) {
-  selectedControl.value = Math.max(0, Math.min(controls.value.length - 1, Math.round(index)))
+  const nextIndex = Math.max(0, Math.min(controls.value.length - 1, Math.round(index)))
+  if (nextIndex === selectedControl.value) return
+  selectedControl.value = nextIndex
   emit('select-point', selectedControl.value)
 }
 
@@ -121,7 +123,7 @@ function chooseClosestControl(x: number) {
 }
 
 function controlAtPoint(x: number, y: number) {
-  if (!props.showPoints) return null
+  if (!showGuides.value) return null
   let closest: { index: number; byteIndex: number; distance: number } | null = null
   for (const [index, control] of controls.value.entries()) {
     const distance = Math.hypot(control.x - x, control.y - y)
@@ -164,7 +166,7 @@ function onPointerDown(event: PointerEvent) {
   dragging.value = true
   previousFrame = null
   emit('gesture-start')
-  requestDraw()
+  requestDraw(false)
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -220,7 +222,7 @@ function finishPointerGesture(cancel = false) {
   if (canvas.value?.hasPointerCapture(gesture.pointerId)) canvas.value.releasePointerCapture(gesture.pointerId)
   previousFrame = null
   emit('gesture-end')
-  requestDraw()
+  requestDraw(false)
 }
 
 function onPointerUp(event: PointerEvent) {
@@ -241,7 +243,7 @@ function finishKeyboardGesture(cancel = false) {
   if (cancel) updateHash(startHash)
   previousFrame = null
   emit('gesture-end')
-  requestDraw()
+  requestDraw(false)
 }
 
 function onKeyDown(event: KeyboardEvent) {
@@ -311,9 +313,10 @@ function resizeCanvas() {
 }
 
 function resetPhase() {
+  const changed = phase !== 0
   phase = 0
   previousFrame = null
-  requestDraw()
+  if (changed) requestDraw()
 }
 
 function exportPng() {
@@ -407,18 +410,13 @@ defineExpose({ exportPng, resetPhase })
       @contextmenu.prevent
     />
     <svg v-if="showGuides && geometry" class="squiggle-canvas__guides" :viewBox="`0 0 ${width} ${height}`" aria-hidden="true">
-      <g v-if="selection" class="squiggle-canvas__rail">
-        <path :d="`M ${selection.x} ${selection.y - 23} v 46`" class="squiggle-canvas__rail-halo" />
-        <path :d="`M ${selection.x} ${selection.y - 23} v 46`" />
-        <path :d="`M ${selection.x - 3} ${selection.y - 19} l 3 -4 l 3 4 M ${selection.x - 3} ${selection.y + 19} l 3 4 l 3 -4`" />
-      </g>
       <circle
         v-for="(control, index) in controls"
         :key="control.byteIndex"
         :cx="control.x"
         :cy="control.y"
         :r="index === selectedControl ? 5 : 3"
-        :class="{ 'is-selected': index === selectedControl }"
+        :class="{ 'is-selected': index === selectedControl, 'is-active': dragging && index === selectedControl }"
       />
     </svg>
     <p :id="instructionsId" class="squiggle-canvas__sr-only">Drag the curve up or down. Control points stay evenly spaced. Use Left and Right to select a point, then Up and Down to move it. Hold Shift for larger changes. Escape cancels a drag.</p>
@@ -454,7 +452,7 @@ defineExpose({ exportPng, resetPhase })
   outline-offset: -4px;
 }
 
-.is-hovered .squiggle-canvas__art { cursor: ns-resize; }
+.is-hovered .squiggle-canvas__art { cursor: grab; }
 .is-dragging .squiggle-canvas__art { cursor: grabbing; }
 
 .squiggle-canvas__guides {
@@ -478,15 +476,11 @@ defineExpose({ exportPng, resetPhase })
   stroke-width: 1.5;
 }
 
-.squiggle-canvas__rail {
-  fill: none;
-  stroke: #272725;
-  stroke-width: 1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.squiggle-canvas__guides circle.is-active {
+  fill: #272725;
+  fill-opacity: 1;
+  stroke: #fff;
 }
-
-.squiggle-canvas__rail-halo { stroke: #fff; stroke-width: 3; }
 
 .squiggle-canvas__sr-only {
   position: absolute;

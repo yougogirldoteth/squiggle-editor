@@ -6,7 +6,8 @@ const props = withDefaults(defineProps<{
   hash: string
   invalid?: boolean
   describedBy?: string
-}>(), { invalid: false })
+  animate?: boolean
+}>(), { invalid: false, animate: true })
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -24,7 +25,7 @@ const focused = ref(false)
 const ready = ref(false)
 const reducedMotion = ref(false)
 const characters = shallowRef<Character[]>(stationaryCharacters(props.hash))
-const showOverlay = computed(() => ready.value && !focused.value && !reducedMotion.value && !props.invalid && props.modelValue === props.hash)
+const showOverlay = computed(() => props.animate && ready.value && !focused.value && !reducedMotion.value && !props.invalid && props.modelValue === props.hash)
 
 let initialFrame: number | undefined
 let motionQuery: MediaQueryList | undefined
@@ -57,6 +58,8 @@ watch(() => props.hash, (hash, previousHash) => {
 watch([() => props.modelValue, () => props.invalid], () => {
   if (!showOverlay.value) stopRolling()
 })
+
+watch(() => props.animate, stopRolling)
 
 function onFocus() {
   focused.value = true

@@ -114,7 +114,11 @@ describe('geometry and constrained pulling', () => {
     const output = dragCurve(input, size.width, size.height, 4, 0.5, 45)
     const after = buildGeometry(output, size.width, size.height)
     const sampleIndex = 4 * 201 + 100
-    expect(after.points[sampleIndex]!.y - before.points[sampleIndex]!.y).toBeCloseTo(45, 0)
+    // At t=0.5 the four basis weights are [-1, 9, 9, -1] / 16.
+    // Each independently rounded control is at most half a byte from its fit.
+    const pixelsPerByte = 2 * before.squigH / before.traits.ht / 255
+    const roundingBound = pixelsPerByte * 0.5 * (1 + 9 + 9 + 1) / 16
+    expect(Math.abs(after.points[sampleIndex]!.y - before.points[sampleIndex]!.y - 45)).toBeLessThanOrEqual(roundingBound)
     expect(after.points[sampleIndex]!.x).toBe(before.points[sampleIndex]!.x)
     const nextBytes = parseHash(output)
     nextBytes.forEach((value, index) => {
@@ -123,6 +127,61 @@ describe('geometry and constrained pulling', () => {
     })
     expect(dragCurve(input, size.width, size.height, 4, 0.5, 0)).toBe(input)
     expect(buildGeometry(toHash(parseHash(output)), size.width, size.height)).toEqual(after)
+  })
+
+  it.each([
+    { t: 0.371, localBytes: [128, 128, 128, 128] },
+    { t: 0.5, localBytes: [128, 128, 128, 128] },
+    { t: 0.371, localBytes: [0, 254, 2, 255] },
+    { t: 0.5, localBytes: [0, 254, 2, 255] },
+  ])('keeps each control monotonic at t=$t from $localBytes, including saturation', ({ t, localBytes }) => {
+    const bytes = Array<number>(32).fill(128)
+    bytes.splice(4, 4, ...localBytes)
+    const input = toHash(bytes)
+    const geometry = buildGeometry(input, 900, 600)
+    const pixelsPerByte = 2 * geometry.squigH / geometry.traits.ht / 255
+    const weights = [
+      -0.5 * t + t * t - 0.5 * t ** 3,
+      1 - 2.5 * t * t + 1.5 * t ** 3,
+      0.5 * t + 2 * t * t - 1.5 * t ** 3,
+      -0.5 * t * t + 0.5 * t ** 3,
+    ]
+    const project = (values: number[]) => weights.reduce((sum, weight, i) => sum + weight * values[i]!, 0)
+    const originalY = project(localBytes)
+    const minimumY = weights.reduce((sum, weight) => sum + Math.min(0, weight * 255), 0)
+    const maximumY = weights.reduce((sum, weight) => sum + Math.max(0, weight * 255), 0)
+    const roundingBound = pixelsPerByte * 0.5 * weights.reduce((sum, weight) => sum + Math.abs(weight), 0)
+
+    for (const direction of [-1, 1]) {
+      let previous = localBytes
+      let reversals = 0
+      let unrelatedChanges = 0
+      let invalidBytes = 0
+      let largestError = 0
+      let reachedNewBound = false
+      for (let step = 1; step <= 800; step++) {
+        const delta = direction * step / 10
+        const output = parseHash(dragCurve(input, 900, 600, 4, t, delta))
+        const local = output.slice(4, 8)
+        local.forEach((value, index) => {
+          if ((value - previous[index]!) * weights[index]! * direction < 0) reversals++
+          if (value !== localBytes[index] && (value === 0 || value === 255)) reachedNewBound = true
+        })
+        output.forEach((value, index) => {
+          if ((index < 4 || index > 7) && value !== bytes[index]) unrelatedChanges++
+          if (!Number.isInteger(value) || value < 0 || value > 255) invalidBytes++
+        })
+        const reachableY = Math.max(minimumY, Math.min(maximumY, originalY + delta / pixelsPerByte))
+        largestError = Math.max(largestError, Math.abs(project(local) - reachableY) * pixelsPerByte)
+        previous = local
+      }
+      expect(reversals).toBe(0)
+      expect(unrelatedChanges).toBe(0)
+      expect(invalidBytes).toBe(0)
+      expect(largestError).toBeLessThanOrEqual(roundingBound + 1e-10)
+      if (localBytes[0] === 0) expect(reachedNewBound).toBe(true)
+      expect(dragCurve(input, 900, 600, 4, t, 0)).toBe(input)
+    }
   })
 
   it('uses endpoint weights and saturates within representable bytes', () => {

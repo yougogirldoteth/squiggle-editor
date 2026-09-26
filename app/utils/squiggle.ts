@@ -333,20 +333,11 @@ export function dragCurve(hash: string, width: number, height: number, segment: 
     }
     for (const i of saturated) free.delete(i)
   }
-  // Compare adjacent integer encodings, selecting the best representable pull.
-  let quantized = fitted.map(byte)
-  let bestError = Infinity
-  let bestMovement = Infinity
-  for (let mask = 0; mask < 16; mask++) {
-    const candidate = fitted.map((value, i) => byte(mask & (1 << i) ? Math.ceil(value) : Math.floor(value)))
-    const error = Math.abs(weights.reduce((sum, weight, i) => sum + weight * candidate[i]!, 0) - reachableTarget)
-    const movement = candidate.reduce((sum, value, i) => sum + (value - original[i]!) ** 2, 0)
-    if (error < bestError - 1e-10 || (Math.abs(error - bestError) <= 1e-10 && movement < bestMovement)) {
-      quantized = candidate
-      bestError = error
-      bestMovement = movement
-    }
-  }
+  // The closest integer controls to the bounded fit move monotonically during
+  // a steady pull. Optimizing only the grabbed point's quantization error can
+  // instead make neighboring bytes oscillate between equally close encodings.
+  // Rounding limits that point's error to half a byte times sum(abs(weights)).
+  const quantized = fitted.map(byte)
   quantized.forEach((value, i) => { traits.bytes[segment + i] = value })
   return toHash(traits.bytes)
 }

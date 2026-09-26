@@ -438,9 +438,13 @@ test('curve drags create one undo step, support redo and Escape cancellation, an
   let point = await curvePosition(page)
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
+  await expect(page.locator('.hash-input__overlay')).toHaveCount(0)
   await page.mouse.move(point.x, point.y + 44, { steps: 5 })
+  await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
+  await expect(artworkHash(page)).not.toHaveClass(/is-masked/)
   await page.mouse.move(1, point.y + 44)
   await page.mouse.up()
+  await expect(page.locator('.hash-input__slot')).toHaveCount(66)
   const draggedHash = await artworkHash(page).inputValue()
   expect(draggedHash).not.toBe(DEFAULT_HASH)
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
@@ -468,6 +472,27 @@ test('curve drags create one undo step, support redo and Escape cancellation, an
   expect(differences).toEqual([-1])
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
+})
+
+test('visible handles on Color directly edit one point without shifting neighboring bytes', async ({ page }) => {
+  await openEditor(page)
+  await expect(page.getByRole('tab', { name: 'Color', exact: true })).toHaveAttribute('aria-selected', 'true')
+  const bounds = (await artwork(page).boundingBox())!
+  const startHash = setByte(DEFAULT_HASH, 0, 128)
+  await artworkHash(page).fill(startHash)
+  await artworkHash(page).press('Enter')
+  await artwork(page).focus()
+  const control = buildGeometry(startHash, bounds.width, bounds.height).controls[0]!
+  const x = bounds.x + control.x
+  const y = bounds.y + control.y
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x, y + 30, { steps: 8 })
+  await expect.poll(async () => changedBytes(startHash, await artworkHash(page).inputValue())).toEqual([0])
+  await page.mouse.up()
+  await expect(page.locator('.squiggle-canvas__guides circle.is-selected')).toHaveAttribute('cx', String(control.x))
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(artworkHash(page)).toHaveValue(startHash)
 })
 
 test('genuine touch drags edit on phones and touch cancellation restores the starting hash', async ({ browser }) => {

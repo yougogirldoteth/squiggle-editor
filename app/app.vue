@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
 
     <section class="hash-section" aria-label="Hash">
       <div class="hash-bar" :class="{ invalid: hashError }">
-        <HashInput v-model="hashDraft" :hash="hash" :invalid="!!hashError" :described-by="hashError ? 'hash-error' : undefined" @load="importHash" @update:model-value="hashError = ''" />
+        <HashInput v-model="hashDraft" :hash="hash" :animate="!dragging" :invalid="!!hashError" :described-by="hashError ? 'hash-error' : undefined" @load="importHash" @update:model-value="hashError = ''" />
         <button v-if="hashDraft !== hash" class="hash-action" aria-label="Load hash" title="Load hash" @click="importHash"><EditorIcon name="arrow" /></button>
         <button v-else class="hash-action" aria-label="Copy hash" title="Copy hash" @click="copy(hash, 'Hash copied')"><EditorIcon name="copy" /></button>
       </div>
@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
       <p class="type-heading">Type</p>
       <div class="type-list">
         <button v-for="type in TYPES" :key="type" class="type-button" :class="{ selected: traits.type === type }" :aria-pressed="traits.type === type" @click="chooseType(type)">
-          <TypePreview :type="type" /><span>{{ type }}</span><span class="selected-dot" aria-hidden="true" />
+          <TypePreview :type="type" /><span>{{ type }}</span>
         </button>
       </div>
       <a class="artist-credit" href="https://www.snowfro.com/projects/chromie-squiggle" target="_blank" rel="noopener noreferrer" title="Chromie Squiggle by Snowfro · Independent editor">By Snowfro ↗</a>
