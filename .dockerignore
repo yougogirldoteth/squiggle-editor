@@ -2,6 +2,7 @@
 .github
 .env*
 .kamal
+config/deploy*.yml
 work
 outputs
 node_modules
