@@ -500,12 +500,31 @@ test('visible handles on Color directly edit one point without shifting neighbor
   await expect(artworkHash(page)).toHaveValue(startHash)
 })
 
-test('genuine touch drags edit on phones and keep their position when the browser interrupts touch', async ({ browser }) => {
+test('genuine touch drags edit on phones and keep their position when the browser interrupts touch', async ({ browser }, testInfo) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3021', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const page = await context.newPage()
   const errors = watchErrors(page)
+  let completed = false
   try {
     await openEditor(page)
+    await page.evaluate(() => {
+      const events: unknown[] = []
+      ;(window as any).touchDiagnostics = events
+      for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click', 'focus', 'blur']) {
+        window.addEventListener(type, event => {
+          if (events.length >= 256) return
+          const target = event.target instanceof Element ? event.target : null
+          events.push({
+            type, time: event.timeStamp, prevented: event.defaultPrevented,
+            target: target?.tagName, button: target?.closest('button')?.getAttribute('aria-label'),
+            pointerId: 'pointerId' in event ? event.pointerId : undefined,
+            focused: document.hasFocus(), active: document.activeElement?.tagName,
+            hash: (document.getElementById('hash') as HTMLTextAreaElement).value,
+            canUndo: !document.querySelector<HTMLButtonElement>('[aria-label="Undo"]')?.disabled,
+          })
+        })
+      }
+    })
     const session = await context.newCDPSession(page)
     // Use one ordered native touch stream for both the drag and the controls.
     const tapControl = async (control: Locator) => {
@@ -557,7 +576,14 @@ test('genuine touch drags edit on phones and keep their position when the browse
     }
     expect(await page.evaluate(() => ({ x: scrollX, y: scrollY }))).toEqual({ x: 0, y: 0 })
     expect(errors, 'No errors in the touch-enabled browser context').toEqual([])
+    completed = true
   } finally {
+    try {
+      if (!completed && !page.isClosed()) {
+        const events = await page.evaluate(() => (window as any).touchDiagnostics ?? [])
+        await testInfo.attach('native-touch-events', { body: JSON.stringify(events, null, 2), contentType: 'application/json' })
+      }
+    } catch { /* Diagnostics must not hide the original failure if the browser crashed. */ }
     await context.close()
   }
 })
