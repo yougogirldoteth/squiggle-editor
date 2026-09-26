@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { managedPreviewInputs } from '../utils/previewContext'
+import { sanitizePngExport } from '../utils/pngExport'
 
 const props = withDefaults(defineProps<{
   source: string
@@ -22,7 +23,7 @@ let resizeObserver: ResizeObserver | undefined
 let renderedWidth = 0
 let renderedHeight = 0
 let requestCount = 0
-const exports = new Map<number, { resolve: (blob: Blob) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+const exports = new Map<number, { resolve: (blob: Blob) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout>; processing: boolean }>()
 
 function scriptString(value: string) {
   // Prevent an edited closing script tag from terminating the srcdoc bootstrap.
@@ -169,7 +170,7 @@ function onResize() {
   resizeTimer = setTimeout(run, 150)
 }
 
-function onMessage(event: MessageEvent) {
+async function onMessage(event: MessageEvent) {
   if (event.source !== frame.value?.contentWindow) return
   const data = event.data
   if (!data || typeof data !== 'object' || data.channel !== 'squiggle-preview' || data.token !== instance.value) return
@@ -180,22 +181,28 @@ function onMessage(event: MessageEvent) {
     previewReady = true
     updateView()
     emit('ready')
-  } else if ((data.type === 'export' || data.type === 'export-error') && Number.isInteger(data.requestId)) {
+  } else if ((data.type === 'export' || data.type === 'export-error') && Number.isSafeInteger(data.requestId)) {
     const request = exports.get(data.requestId)
-    if (!request) return
-    exports.delete(data.requestId)
-    clearTimeout(request.timer)
+    if (!request || request.processing) return
     if (data.type === 'export-error') {
+      exports.delete(data.requestId)
+      clearTimeout(request.timer)
       request.reject(new Error(typeof data.message === 'string' ? data.message.slice(0, 2000) : 'PNG export failed.'))
       return
     }
+    request.processing = true
+    const token = instance.value
+    const isCurrent = () => exports.get(data.requestId) === request && instance.value === token && frame.value?.contentWindow === event.source
     try {
-      if (typeof data.png !== 'string' || data.png.length > 32 * 1024 * 1024 || !/^data:image\/png;base64,[A-Za-z0-9+/]*={0,2}$/.test(data.png)) throw new Error('The sketch returned an invalid PNG.')
-      const binary = atob(data.png.slice(data.png.indexOf(',') + 1))
-      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
-      if (bytes.length < 8 || ![137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value)) throw new Error('The sketch returned an invalid PNG.')
-      request.resolve(new Blob([bytes], { type: 'image/png' }))
+      const blob = await sanitizePngExport(data.png)
+      if (!isCurrent()) return
+      exports.delete(data.requestId)
+      clearTimeout(request.timer)
+      request.resolve(blob)
     } catch (error) {
+      if (!isCurrent()) return
+      exports.delete(data.requestId)
+      clearTimeout(request.timer)
       request.reject(error instanceof Error ? error : new Error('PNG export failed.'))
     }
   }
@@ -212,13 +219,14 @@ function updateView() {
 function exportPng(): Promise<Blob> {
   const target = frame.value?.contentWindow
   if (!target || !instance.value) return Promise.reject(new Error('Run a sketch before exporting.'))
+  if (exports.size) return Promise.reject(new Error('A PNG export is already in progress.'))
   const requestId = ++requestCount
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       exports.delete(requestId)
       reject(new Error('The sketch did not respond to the PNG request.'))
     }, 10000)
-    exports.set(requestId, { resolve, reject, timer })
+    exports.set(requestId, { resolve, reject, timer, processing: false })
     target.postMessage({ channel: 'squiggle-preview', token: instance.value, type: 'export', requestId }, '*')
   })
 }

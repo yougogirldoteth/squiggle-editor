@@ -2,6 +2,14 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-09-25',
   devtools: { enabled: false },
   css: ['~/assets/editor.css'],
+  routeRules: {
+    '/**': {
+      headers: {
+        // srcdoc is allowed; sketches cannot navigate to external documents.
+        'Content-Security-Policy': "frame-src 'none'; object-src 'none'; base-uri 'self'",
+      },
+    },
+  },
   app: {
     head: {
       title: 'Squiggle Editor — a little room for color',

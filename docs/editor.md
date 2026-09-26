@@ -56,9 +56,17 @@ Control changes and point edits briefly highlight the affected original expressi
 
 Edit the source, then choose **Run** or press **⌘/Ctrl Enter**. Edits remain a draft until you run them. Closing the code pane preserves that draft within the current page, but refreshing or navigating away discards it. **Copy** copies the displayed source, including any unapplied edits.
 
-Custom source runs in a separate, sandboxed iframe with the bundled p5.js runtime. The preview supplies `tokenData.hashes` and the view context separately. It cannot access the editor document, and its content-security policy restricts network access. The copied script still needs p5.js and token data if you run it elsewhere.
+Custom source runs in a separate, sandboxed iframe with the bundled p5.js runtime. The preview supplies `tokenData.hashes` and the view context separately. The copied script still needs p5.js and token data if you run it elsewhere.
 
 Hash edits and canvas-size changes restart a custom sketch so its initial declarations can use the new input. Background, speed, and play/pause update in place when those inputs remain managed by the editor. Explicit custom declarations or writes take precedence. Custom code can change drawing behavior beyond what a hash can represent.
+
+### Custom-code boundaries
+
+Custom code runs only in your browser after you choose **Run**. It is never evaluated on the server or loaded from a shared URL. The iframe has an opaque origin: it cannot read the editor document, cookies, or local storage. Its sandbox blocks popups, top-level navigation, forms, and direct downloads. A policy on the editor page also blocks the preview from navigating itself to an external document. The preview's own policy restricts scripts to the bundled p5 file and inline code, and blocks fetch, remote images, external frames, and workers.
+
+This is not a hardened service for executing arbitrary hostile JavaScript. Run code you trust: a script can still consume CPU or memory and freeze its tab, and content-security policies are not a complete network firewall for every browser API (including WebRTC). The sandbox does not provide a CPU quota or protect against browser vulnerabilities.
+
+The **Export** button accepts only a response from the current preview for an outstanding export request. The editor checks image structure and dimensions, decodes it, and creates a fresh PNG from the pixels before downloading `squiggle-custom.png`. Metadata and arbitrary returned bytes are not passed through. Restarting or resetting the preview cancels pending exports.
 
 ## Export
 
@@ -68,3 +76,5 @@ Hash edits and canvas-size changes restart a custom sketch so its initial declar
 | Custom code | The running p5 canvas at its current pixel dimensions. |
 
 Exports use the current background and animation phase and omit the editing guides. Custom export captures the last applied code, not an unapplied draft. Browser rendering and device pixel ratio can affect the pixels; see [rendering fidelity](rendering.md#rendering-fidelity).
+
+Custom exports are limited to 8192 pixels per side and 16,777,216 total pixels, with a 32 MiB limit on the encoded response. Invalid images and animated PNGs are rejected.

@@ -28,7 +28,7 @@ Open [localhost:3021](http://localhost:3021). If you use nvm, run `nvm use` firs
 
 **Code mode** shows a formatting-only copy of the verified on-chain script. Changing a control highlights the relevant expressions without rewriting that source. Edit the script and press **Run** or **⌘/Ctrl Enter** to preview custom code with p5.js 1.0.0. **Reset original code** returns to the standard renderer.
 
-Custom code is separate from the hash: it is not saved in the URL or across page reloads. Copy your code before leaving. A custom PNG export captures the running p5 canvas at its current size.
+Custom code is separate from the hash: it is not saved in the URL or across page reloads. Copy your code before leaving. A custom PNG export captures the running p5 canvas at its current size. Run code you trust; see the [sandbox and export boundaries](docs/editor.md#custom-code-boundaries).
 
 ## Development
 

@@ -43,6 +43,7 @@ The production preview uses port 3021 too. Stop the development server before ru
 | `app/components/CodePanel.vue` | CodeMirror editing, highlighting, and navigation. |
 | `app/utils/liveSketch.ts` | Original source display and mapping edits to relevant expressions. |
 | `app/components/ScriptPreview.vue` | Isolated p5 execution and custom PNG export. |
+| `app/utils/pngExport.ts` | Bounded image validation and fresh PNG encoding for custom exports. |
 | `app/utils/previewContext.ts` | Which view inputs custom code owns. |
 | `app/data` | Original source, formatting-only copy, and provenance record. |
 | `public/vendor` | Unmodified p5 runtime, matching source, and license. |
