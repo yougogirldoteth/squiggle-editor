@@ -10,3 +10,5 @@ coverage
 test-results
 playwright-report
 work
+.kamal/
+config/deploy*.yml

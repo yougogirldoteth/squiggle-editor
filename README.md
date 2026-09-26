@@ -45,7 +45,7 @@ For browser tests, install Chrome with `npx playwright install chrome`, keep the
 - [Using the editor](docs/editor.md) — controls, keyboard shortcuts, code mode, and sharing.
 - [Hash and rendering reference](docs/rendering.md) — byte mappings, fidelity, and implementation boundaries.
 - [Contributing](CONTRIBUTING.md) — setup, checks, and where the code lives.
-- [Deployment](docs/deployment.md) — Docker and the hosted instance's Kamal configuration.
+- [Deployment](docs/deployment.md) — build and run with Node.js or Docker.
 - [Third-party notices](THIRD_PARTY_NOTICES.md) — original source verification, attribution, and dependency licenses.
 
 ## Credits and license
