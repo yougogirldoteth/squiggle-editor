@@ -254,8 +254,11 @@ describe('deterministic rendering', () => {
     const operations: unknown[][] = []
     const ctx = {
       fillStyle: '', strokeStyle: '', lineWidth: 0, lineCap: '', lineJoin: '', globalAlpha: 1, globalCompositeOperation: '',
-      save() {}, restore() {}, beginPath() {}, clearRect() {}, fillRect() {},
-      arc(...args: number[]) { operations.push(['arc', ...args]) },
+      save() {}, restore() {}, clearRect() {}, fillRect() {},
+      beginPath() { operations.push(['beginPath']) },
+      moveTo(...args: number[]) { operations.push(['moveTo', ...args]) },
+      bezierCurveTo(...args: number[]) { operations.push(['bezierCurveTo', ...args]) },
+      closePath() { operations.push(['closePath']) },
       fill() { operations.push(['fill', this.fillStyle]) },
       stroke() { operations.push(['stroke', this.strokeStyle, this.lineWidth]) },
     }
@@ -273,7 +276,9 @@ describe('deterministic rendering', () => {
       const still = trace(hash)
       const animated = trace(hash, 70)
       expect(JSON.stringify(animated)).not.toBe(JSON.stringify(still))
-      expect(JSON.stringify(animated.filter(op => op[0] === 'arc'))).toBe(JSON.stringify(still.filter(op => op[0] === 'arc')))
+      const pathOperations = (operations: unknown[][]) => operations.filter(op => ['beginPath', 'moveTo', 'bezierCurveTo', 'closePath'].includes(op[0] as string))
+      expect(still.some(op => op[0] === 'bezierCurveTo')).toBe(true)
+      expect(JSON.stringify(pathOperations(animated))).toBe(JSON.stringify(pathOperations(still)))
       expect(JSON.stringify(trace(hash, 255))).toBe(JSON.stringify(still))
     }
   })

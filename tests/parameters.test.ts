@@ -5,14 +5,17 @@ const WIDTH = 900
 const HEIGHT = 600
 
 function render(hash: string, background = '#fff', phase = 0) {
-  const circles: number[][] = []
+  const circles: number[][][] = []
   const paints: string[] = []
   let backdrop = ''
   const ctx = {
     fillStyle: '', strokeStyle: '', lineWidth: 0,
-    save() {}, restore() {}, beginPath() {}, clearRect() {},
+    save() {}, restore() {}, clearRect() {},
+    beginPath() { circles.push([]) },
     fillRect() { backdrop = this.fillStyle },
-    arc(...values: number[]) { circles.push(values) },
+    moveTo(...values: number[]) { circles.at(-1)!.push(values) },
+    bezierCurveTo(...values: number[]) { circles.at(-1)!.push(values) },
+    closePath() { circles.at(-1)!.push([]) },
     fill() { paints.push(`fill:${this.fillStyle}`) },
     stroke() { paints.push(`stroke:${this.strokeStyle}:${this.lineWidth}`) },
   }
@@ -53,7 +56,7 @@ describe('visible starting hue controls', () => {
         let firstFill: string | undefined
         const ctx = {
           fillStyle: '', strokeStyle: '',
-          save() {}, restore() {}, beginPath() {}, clearRect() {}, fillRect() {}, arc() {}, stroke() {},
+          save() {}, restore() {}, beginPath() {}, clearRect() {}, fillRect() {}, moveTo() {}, bezierCurveTo() {}, closePath() {}, stroke() {},
           fill() { firstFill ??= this.fillStyle },
         }
         drawSquiggle(ctx as unknown as CanvasRenderingContext2D, hash, WIDTH, HEIGHT, { background: '#fff', phase: 0 })

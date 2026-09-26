@@ -137,19 +137,25 @@ function dimensions(width: number, height: number) {
     throw new RangeError('Canvas dimensions must be finite and positive.')
   }
   const squigW = Math.min(width, height * 3 / 2)
-  const squigH = squigW * 2 / 3
+  const squigH = width > height * 3 / 2 ? height : width * 2 / 3
   return { squigW, squigH, offsetX: width / 2 - squigW / 4, offsetY: height / 2 }
 }
 
 /** p5.js curvePoint at its default tightness, with the original arithmetic order. */
 function curve(a: number, b: number, c: number, d: number, t: number): number {
+  const t3 = t * t * t
   const t2 = t * t
-  const t3 = t2 * t
-  return 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3)
+  const f1 = -0.5 * t3 + t2 - 0.5 * t
+  const f2 = 1.5 * t3 - 2.5 * t2 + 1
+  const f3 = -1.5 * t3 + 2 * t2 + 0.5 * t
+  const f4 = 0.5 * t3 - 0.5 * t2
+  return a * f1 + b * f2 + c * f3 + d * f4
 }
 
 function controlY(value: number, squigH: number, ht: number): number {
-  return -squigH / ht + (2 * squigH / ht) * (value / 255)
+  const low = -squigH / ht
+  const high = squigH / ht
+  return value / 255 * (high - low) + low
 }
 
 function sample(traits: SquiggleTraits, size: ReturnType<typeof dimensions>, segment: number, t: number): CurveLocation {
@@ -226,17 +232,19 @@ export function buildGeometry(hash: string, width: number, height: number): Squi
     const rnd = randomSequence(normalizedHash)
     for (let i = 0; i <= steps; i++) {
       const t = i / steps
-      const x = offsetX + curve(x0, x1, x2, x3, t)
-      const y = offsetY + curve(y0, y1, y2, y3, t)
+      const curveX = curve(x0, x1, x2, x3, t)
+      const curveY = curve(y0, y1, y2, y3, t)
+      const x = offsetX + curveX
+      const y = offsetY + curveY
       const isEndpoint = i === 0 || i === steps - 1
       let fuzz: CurveSample['fuzz'] = null
       if (traits.fuzzy) {
-        const dx = rnd() * squigH / 10
-        const dy = rnd() * squigH / 10
-        if (Math.sqrt(dx * dx + dy * dy) < squigH / 11.5) {
+        const fuzzX = curveX + rnd() * (squigH / 10)
+        const fuzzY = curveY + rnd() * (squigH / 10)
+        if (Math.hypot(fuzzX - curveX, fuzzY - curveY) < squigH / 11.5) {
           fuzz = {
-            x: x + dx,
-            y: y + dy,
+            x: offsetX + fuzzX,
+            y: offsetY + fuzzY,
             diameter: squigH / 160 + rnd() * (squigH / 16 - squigH / 160),
           }
         }
@@ -343,13 +351,20 @@ export function dragCurve(hash: string, width: number, height: number, segment: 
 }
 
 function hueColor(hue: number, alpha = 1): string {
-  const h = (((hue % 255) + 255) % 255) / 255 * 6
+  // Preserve p5 1.0.0's normalization and tint arithmetic. Re-wrapping hue or
+  // simplifying the tint expressions changes rounding at half-channel values.
+  const h = Math.max(0, Math.min(1, hue / 255)) * 6
   const sector = Math.floor(h)
-  const fraction = h - sector
-  const rising = Math.round(fraction * 255)
-  const falling = Math.round((1 - fraction) * 255)
-  const rgb = [[255, rising, 0], [falling, 255, 0], [0, 255, rising], [0, falling, 255], [rising, 0, 255], [255, 0, falling]][sector % 6]!
-  return alpha === 1 ? `rgb(${rgb.join(',')})` : `rgba(${rgb.join(',')},${alpha})`
+  const falling = Math.round((1 - (h - sector)) * 255)
+  const rising = Math.round((1 - (1 + sector - h)) * 255)
+  let rgb: string
+  if (sector === 1) rgb = `${falling},255,0`
+  else if (sector === 2) rgb = `0,255,${rising}`
+  else if (sector === 3) rgb = `0,${falling},255`
+  else if (sector === 4) rgb = `${rising},0,255`
+  else if (sector === 5) rgb = `255,0,${falling}`
+  else rgb = `255,${rising},0`
+  return alpha === 1 ? `rgb(${rgb})` : `rgba(${rgb},${alpha})`
 }
 
 // A single-entry memo avoids rebuilding thousands of Fuzzy samples per frame.
@@ -372,8 +387,22 @@ export function drawSquiggle(ctx: CanvasRenderingContext2D, hash: string, width:
   ctx.lineCap = 'round'
   ctx.lineJoin = 'miter'
   const circle = (x: number, y: number, diameter: number, fill: boolean, stroke: boolean) => {
+    // The original p5 1.0.0 renderer uses four cubic segments, not a native arc.
+    // Their tiny radial difference is visible where thousands of rings overlap.
+    const left = x - diameter / 2
+    const top = y - diameter / 2
+    const offset = diameter / 2 * 0.5522847498
+    const right = left + diameter
+    const bottom = top + diameter
+    const middleX = left + diameter / 2
+    const middleY = top + diameter / 2
     ctx.beginPath()
-    ctx.arc(x, y, diameter / 2, 0, Math.PI * 2)
+    ctx.moveTo(left, middleY)
+    ctx.bezierCurveTo(left, middleY - offset, middleX - offset, top, middleX, top)
+    ctx.bezierCurveTo(middleX + offset, top, right, middleY - offset, right, middleY)
+    ctx.bezierCurveTo(right, middleY + offset, middleX + offset, bottom, middleX, bottom)
+    ctx.bezierCurveTo(middleX - offset, bottom, left, middleY + offset, left, middleY)
+    ctx.closePath()
     if (fill) ctx.fill()
     if (stroke) ctx.stroke()
   }

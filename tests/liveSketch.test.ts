@@ -80,19 +80,22 @@ describe('verified original live sketch', () => {
     expect(displayed.comments?.map(({ type, value }) => ({ type, value }))).toEqual(original.comments?.map(({ type, value }) => ({ type, value })))
   })
 
-  it.each(TYPES)('runs the formatted %s script identically to the exact original source', (type) => {
-    for (const [reverse, hyper, width, height] of [[false, false, 900, 600], [true, false, 390, 514], [false, true, 1200, 600], [true, true, 900, 1000]] as const) {
-      let hash = setType(DEFAULT_HASH, type)
-      hash = setByte(setByte(hash, 30, reverse ? 127 : 128), 28, hyper ? 2 : 73)
-      const settings = { background: '#afafaf', speed: 2.5, playing: true }
-      const actual = runSource(withRuntimeInputs(createLiveSketch().source, hash, settings), width, height)
-      const expected = runSource(withRuntimeInputs(rawOriginal, hash, settings), width, height)
-      expect(actual.value('decPairs')).toEqual(parseHash(hash))
-      expect(actual.value('fuzzy')).toBe(decodeHash(hash).fuzzy)
-      expect(actual.draw()).toEqual(expected.draw())
-      expect(actual.draw()).toEqual(expected.draw())
-      expect(actual.value('index')).toBe(5)
-    }
+  it.each(TYPES.flatMap(type => [
+    { type, reverse: false, hyper: false, width: 900, height: 600 },
+    { type, reverse: true, hyper: false, width: 390, height: 514 },
+    { type, reverse: false, hyper: true, width: 1200, height: 600 },
+    { type, reverse: true, hyper: true, width: 900, height: 1000 },
+  ]))('runs formatted $type identically at $width × $height (reverse=$reverse, Hyper=$hyper)', ({ type, reverse, hyper, width, height }) => {
+    let hash = setType(DEFAULT_HASH, type)
+    hash = setByte(setByte(hash, 30, reverse ? 127 : 128), 28, hyper ? 2 : 73)
+    const settings = { background: '#afafaf', speed: 2.5, playing: true }
+    const actual = runSource(withRuntimeInputs(createLiveSketch().source, hash, settings), width, height)
+    const expected = runSource(withRuntimeInputs(rawOriginal, hash, settings), width, height)
+    expect(actual.value('decPairs')).toEqual(parseHash(hash))
+    expect(actual.value('fuzzy')).toBe(decodeHash(hash).fuzzy)
+    expect(actual.draw()).toEqual(expected.draw())
+    expect(actual.draw()).toEqual(expected.draw())
+    expect(actual.value('index')).toBe(5)
   })
 
   it('retains Fuzzy token 7 randomness, fractional segments and latent flags', () => {

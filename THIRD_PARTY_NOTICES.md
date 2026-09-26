@@ -42,7 +42,7 @@ The hashes are bundled in `app/utils/examples.ts` and decoded with the editor's 
 
 The adaptation preserves hash decoding, type precedence, fractional segment counts, Catmull–Rom geometry, inclusive sample loops, endpoint conditions, hue calculations, and the original seeded Fuzzy distribution. Fuzzy uses the original JavaScript seed conversion and signed bitwise shifts, restarts the random sequence per segment, and makes its third random draw only when the distance test passes.
 
-The original p5 renderer and Snowfro's newer Canvas port are distinct implementations. This editor uses the original fuzzy opacity of `20/255`; the newer port rounds its CSS opacity to `0.078`. Native Canvas replaces p5 drawing calls, and responsive layout and interaction are editor features. Algorithm fidelity does not imply pixel identity across browser engines, rendering libraries, or display densities.
+The original p5 renderer and Snowfro's newer Canvas port are distinct implementations. This editor uses the original fuzzy opacity of `20/255`; the newer port rounds its CSS opacity to `0.078`. Circle paths reproduce p5 1.0.0's four cubic Bézier segments, and hue conversion preserves its color rounding. Native Canvas replaces p5 drawing calls, and responsive layout and interaction are editor features. Algorithm fidelity does not imply pixel identity across browser engines, rendering libraries, or display densities.
 
 ### License information
 

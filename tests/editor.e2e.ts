@@ -955,6 +955,69 @@ test('original source runs custom drawing logic with separate token data, preser
   expect(await copySketch(page)).toBe(original)
 })
 
+test('custom sketch view controls preserve animation phase and the running frame', async ({ page }) => {
+  await page.goto('/?code=1')
+  await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+  const custom = (await copySketch(page)).replace('let wt = 2;', 'let wt = 3;')
+  await editSketch(page, custom)
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  await expect(page.frameLocator('iframe').locator('canvas')).toBeVisible()
+  const frame = (await page.locator('iframe').elementHandle())!
+  const running = (await frame.contentFrame())!
+  const state = () => running.evaluate(() => ({
+    phase: eval('index') as number,
+    playing: eval('loops') as boolean,
+    speed: eval('speed') as number,
+    background: eval('backgroundArray[0]') as string,
+    backgroundIndex: eval('backgroundIndex') as number,
+  }))
+  // Original p5 handlers and editor controls must remain usable together.
+  await page.frameLocator('iframe').locator('canvas').click()
+  await expect.poll(async () => (await state()).playing).toBe(true)
+  await page.getByRole('button', { name: 'Play animation', exact: true }).click()
+  await expect.poll(async () => (await state()).phase).toBeGreaterThan(5)
+  const beforePause = (await state()).phase
+  await page.getByRole('button', { name: 'Pause animation', exact: true }).click()
+  await expect.poll(async () => (await state()).playing).toBe(false)
+  const paused = (await state()).phase
+  expect(paused).toBeGreaterThanOrEqual(beforePause)
+  await page.getByRole('tab', { name: 'View', exact: true }).click()
+  await page.getByRole('slider', { name: 'Speed', exact: true }).press('ArrowRight')
+  await expect.poll(async () => (await state()).speed).toBe(1.1)
+  await page.locator('iframe').focus()
+  await page.keyboard.press('Space')
+  await expect.poll(async () => (await state()).backgroundIndex).toBe(1)
+  await page.getByRole('button', { name: 'Gray background', exact: true }).click()
+  await expect.poll(async () => (await state()).background).toBe('#969696')
+  await expect.poll(async () => (await state()).backgroundIndex).toBe(0)
+  expect((await state()).phase).toBe(paused)
+  await page.getByRole('button', { name: 'Play animation', exact: true }).click()
+  await expect.poll(async () => (await state()).phase).toBeGreaterThan(paused)
+  expect(running.isDetached()).toBe(false)
+  expect(await copySketch(page)).toBe(custom)
+})
+
+test('background controls repaint a stopped custom sketch without restarting it', async ({ page }) => {
+  await page.goto('/?code=1')
+  await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+  const custom = (await copySketch(page)).replace('function setup() {', 'function setup() {\n  noLoop();')
+  await editSketch(page, custom)
+  await page.getByRole('button', { name: 'Run code', exact: true }).click()
+  const canvas = page.frameLocator('iframe').locator('canvas')
+  await expect(canvas).toBeVisible()
+  const pixel = () => canvas.evaluate(element => [...(element as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, 1, 1).data])
+  await expect.poll(pixel).toEqual([255, 255, 255, 255])
+  const running = (await (await page.locator('iframe').elementHandle())!.contentFrame())!
+  await page.getByRole('button', { name: 'Gray background', exact: true }).click()
+  await expect.poll(pixel).toEqual([150, 150, 150, 255])
+  expect(running.isDetached()).toBe(false)
+  expect(await running.evaluate(() => (window as any).p5.instance._loop)).toBe(false)
+  const pending = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export PNG', exact: true }).click()
+  const exported = await readFile((await (await pending).path())!)
+  expect(`data:image/png;base64,${exported.toString('base64')}`).toBe(await canvas.evaluate(element => (element as HTMLCanvasElement).toDataURL('image/png')))
+})
+
 test('custom code errors stay recoverable and edited scripts cannot reach the editor document', async ({ page }) => {
   await page.goto('/?code=1')
   await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()

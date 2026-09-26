@@ -109,8 +109,13 @@ watch([hash, background, speed, playing], ([nextHash, bg, nextSpeed, nextPlaying
   highlightedLineIds.value = affectedScriptLines(previousHash, nextHash, oldView, view)
   highlightRevision.value++
   if (customRunning.value) {
-    clearTimeout(previewTimer)
-    previewTimer = setTimeout(() => { previewContext.value = { hash: nextHash, view } }, 160)
+    // View changes update the running sketch immediately; only a new hash
+    // requires a debounced restart of its token-dependent declarations.
+    previewContext.value = { hash: previewContext.value.hash, view }
+    if (nextHash !== previousHash) {
+      clearTimeout(previewTimer)
+      previewTimer = setTimeout(() => { previewContext.value = { hash: hash.value, view: sketchView() } }, 160)
+    }
   }
 }, { flush: 'sync' })
 const tabs = ['Color', 'Shape', 'Texture', 'View'] as const

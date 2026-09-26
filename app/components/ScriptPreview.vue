@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import originalScript from '../data/snowfro-script.formatted.js?raw'
+import { managedPreviewInputs } from '../utils/previewContext'
 
 const props = withDefaults(defineProps<{
   source: string
@@ -15,6 +15,7 @@ const documentSource = ref('')
 const instance = ref('')
 const errorMessage = ref('')
 let mounted = false
+let previewReady = false
 let loadingTimer: ReturnType<typeof setTimeout> | undefined
 let resizeTimer: ReturnType<typeof setTimeout> | undefined
 let resizeObserver: ResizeObserver | undefined
@@ -28,17 +29,10 @@ function scriptString(value: string) {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
 }
 
-function hasOriginalDeclaration(source: string, name: string) {
-  const declaration = originalScript.match(new RegExp(`^let ${name} = [\\s\\S]*?;`, 'm'))?.[0]
-  return declaration !== undefined && source.includes(declaration)
-}
-
 function previewDocument(source: string, token: string) {
   const library = new URL('/vendor/p5-1.0.0.min.js', window.location.href).href
   const csp = `default-src 'none'; script-src 'unsafe-inline' ${library}; connect-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'`
-  const originalSpeed = hasOriginalDeclaration(source, 'speed')
-  const originalPlaying = hasOriginalDeclaration(source, 'loops')
-  const originalBackground = hasOriginalDeclaration(source, 'backgroundIndex') && hasOriginalDeclaration(source, 'backgroundArray')
+  const managedInputs = managedPreviewInputs(source)
   return `<!doctype html><html><head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
@@ -102,12 +96,32 @@ window.tokenData = { hashes: [${scriptString(props.hash)}] };
 <script>
 (function () {
   // These are host controls, separate from the exact editable script above.
-  // Changed declarations and values assigned by custom code take precedence.
-  if (${originalSpeed} && typeof speed === 'number' && speed === 1) speed = ${JSON.stringify(props.view.speed)};
-  if (${originalPlaying} && typeof loops === 'boolean' && loops === false) loops = ${JSON.stringify(props.view.playing)};
-  if (${originalBackground} && typeof backgroundIndex === 'number' && backgroundIndex === 0 && typeof backgroundArray !== 'undefined' && JSON.stringify(backgroundArray) === '[255,225,200,175,150,125,100,75,50,25,0,25,50,75,100,125,150,175,200,225]') {
-    backgroundArray[0] = ${scriptString(props.view.background)};
-  }
+  // Custom declarations and writes own their inputs. Canonical p5 handlers
+  // may still change values at runtime; explicit host controls remain usable.
+  const token = ${scriptString(token)};
+  const manageSpeed = ${managedInputs.speed} && typeof speed === 'number' && speed === 1;
+  const managePlaying = ${managedInputs.playing} && typeof loops === 'boolean' && loops === false;
+  const manageBackground = ${managedInputs.background} && typeof backgroundIndex === 'number' && backgroundIndex === 0 && typeof backgroundArray !== 'undefined' && JSON.stringify(backgroundArray) === '[255,225,200,175,150,125,100,75,50,25,0,25,50,75,100,125,150,175,200,225]';
+  let previousView;
+  const applyView = view => {
+    if (!view || typeof view.background !== 'string' || !Number.isFinite(view.speed) || typeof view.playing !== 'boolean') return;
+    if (manageSpeed && (!previousView || view.speed !== previousView.speed)) speed = view.speed;
+    if (managePlaying && (!previousView || view.playing !== previousView.playing)) loops = view.playing;
+    if (manageBackground && (!previousView || view.background !== previousView.background)) {
+      backgroundArray[0] = view.background;
+      backgroundIndex = 0;
+      // This pinned p5 release predates isLooping(); noLoop() sets _loop.
+      const stopped = typeof isLooping === 'function' ? !isLooping() : typeof p5 !== 'undefined' && p5.instance && p5.instance._loop === false;
+      if (stopped && typeof redraw === 'function') redraw();
+    }
+    previousView = view;
+  };
+  applyView(${JSON.stringify(props.view).replace(/</g, '\\u003c')});
+  window.addEventListener('message', event => {
+    const data = event.data;
+    if (event.source !== parent || !data || data.channel !== 'squiggle-preview' || data.token !== token || data.type !== 'view') return;
+    applyView(data.view);
+  });
 })();
 <\/script>
 </body></html>`
@@ -137,6 +151,7 @@ function run() {
   renderedWidth = host.value?.clientWidth ?? 0
   renderedHeight = host.value?.clientHeight ?? 0
   clearPending('The sketch was restarted before export completed.')
+  previewReady = false
   errorMessage.value = ''
   instance.value = crypto.randomUUID()
   documentSource.value = previewDocument(props.source, instance.value)
@@ -162,6 +177,8 @@ function onMessage(event: MessageEvent) {
   else if (data.type === 'ready') {
     if (loadingTimer) clearTimeout(loadingTimer)
     loadingTimer = undefined
+    previewReady = true
+    updateView()
     emit('ready')
   } else if ((data.type === 'export' || data.type === 'export-error') && Number.isInteger(data.requestId)) {
     const request = exports.get(data.requestId)
@@ -184,6 +201,14 @@ function onMessage(event: MessageEvent) {
   }
 }
 
+function updateView() {
+  if (!previewReady) return
+  frame.value?.contentWindow?.postMessage({
+    channel: 'squiggle-preview', token: instance.value, type: 'view',
+    view: { background: props.view.background, speed: props.view.speed, playing: props.view.playing },
+  }, '*')
+}
+
 function exportPng(): Promise<Blob> {
   const target = frame.value?.contentWindow
   if (!target || !instance.value) return Promise.reject(new Error('Run a sketch before exporting.'))
@@ -198,7 +223,8 @@ function exportPng(): Promise<Blob> {
   })
 }
 
-watch(() => [props.source, props.hash, props.view.background, props.view.speed, props.view.playing, props.runId], run)
+watch(() => [props.source, props.hash, props.runId], run)
+watch(() => [props.view.background, props.view.speed, props.view.playing], updateView)
 onMounted(() => {
   mounted = true
   window.addEventListener('message', onMessage)
