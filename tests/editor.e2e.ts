@@ -994,12 +994,16 @@ test('original source runs custom drawing logic with separate token data, preser
   expect((await download).suggestedFilename()).toBe('squiggle-custom.png')
   for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(viewport)
-    await expect.poll(async () => {
+    // Resizing remounts the sketch, so reacquire the frame if a measurement
+    // overlaps that replacement. The settled canvas must still fit its iframe.
+    await expect(async () => {
       const canvas = await page.frameLocator('iframe').locator('canvas').boundingBox()
       const iframe = await page.locator('iframe').boundingBox()
-      if (!canvas || !iframe) return false
-      return canvas.width <= iframe.width + 1 && canvas.height <= iframe.height + 1
-    }).toBe(true)
+      expect(canvas).not.toBeNull()
+      expect(iframe).not.toBeNull()
+      expect(canvas!.width).toBeLessThanOrEqual(iframe!.width + 1)
+      expect(canvas!.height).toBeLessThanOrEqual(iframe!.height + 1)
+    }).toPass({ timeout: 10_000 })
     await expect(page.getByRole('button', { name: 'Reset original code', exact: true })).toBeInViewport({ ratio: 1 })
   }
   await page.getByRole('button', { name: 'Reset original code', exact: true }).click()
