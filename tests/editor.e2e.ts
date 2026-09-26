@@ -1,5 +1,5 @@
 import { mkdir, readFile } from 'node:fs/promises'
-import { expect, test as base, type Page } from '@playwright/test'
+import { expect, test as base, type Locator, type Page } from '@playwright/test'
 import { buildGeometry, decodeHash, DEFAULT_HASH, dragCurve, nearestCurvePoint, setByte, setType, toHash, TYPES } from '../app/utils/squiggle'
 
 const test = base.extend<{ browserErrors: string[] }>({
@@ -507,12 +507,23 @@ test('genuine touch drags edit on phones and keep their position when the browse
   try {
     await openEditor(page)
     const session = await context.newCDPSession(page)
+    // Use one ordered native touch stream for both the drag and the controls.
+    const tapControl = async (control: Locator) => {
+      await expect(control).toBeVisible()
+      await expect(control).toBeEnabled()
+      const bounds = (await control.boundingBox())!
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, id: 4 }],
+      })
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    }
     let point = await curvePosition(page)
     await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] })
     await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y + 38, id: 1 }] })
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
-    await page.getByRole('button', { name: 'Undo', exact: true }).tap()
+    await tapControl(page.getByRole('button', { name: 'Undo', exact: true }))
     await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
 
     point = await curvePosition(page)
@@ -522,10 +533,10 @@ test('genuine touch drags edit on phones and keep their position when the browse
     const interruptedHash = await artworkHash(page).inputValue()
     await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
     await expect(artworkHash(page)).toHaveValue(interruptedHash)
-    await page.getByRole('button', { name: 'Undo', exact: true }).tap()
+    await tapControl(page.getByRole('button', { name: 'Undo', exact: true }))
     await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
 
-    await page.getByRole('tab', { name: 'Shape', exact: true }).tap()
+    await tapControl(page.getByRole('tab', { name: 'Shape', exact: true }))
     const bounds = (await artwork(page).boundingBox())!
     const lastIndex = buildGeometry(DEFAULT_HASH, bounds.width, bounds.height).controls.length - 1
     const endpointHash = setByte(setByte(DEFAULT_HASH, 0, 128), lastIndex, 128)
@@ -541,7 +552,7 @@ test('genuine touch drags edit on phones and keep their position when the browse
       expect(changedBytes(endpointHash, edited)).toEqual([index])
       await expect(page.getByRole('slider', { name: 'Point height' })).toHaveValue(String(255 - decodeHash(edited).bytes[index]!))
       await expect(page.getByRole('button', { name: index === 0 ? 'Previous point' : 'Next point' })).toBeDisabled()
-      await page.getByRole('button', { name: 'Undo', exact: true }).tap()
+      await tapControl(page.getByRole('button', { name: 'Undo', exact: true }))
       await expect(artworkHash(page)).toHaveValue(endpointHash)
     }
     expect(await page.evaluate(() => ({ x: scrollX, y: scrollY }))).toEqual({ x: 0, y: 0 })
