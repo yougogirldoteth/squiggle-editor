@@ -1,8 +1,8 @@
 <script setup lang="ts">
 defineProps<{ name: string }>()
 const paths: Record<string, string> = {
-  undo: 'M9 5 4 10l5 5M4 10h9a6 6 0 0 1 0 12',
-  redo: 'm15 5 5 5-5 5m5-5h-9a6 6 0 0 0 0 12',
+  undo: 'M9.5 5 4.5 10l5 5M4.5 10h9a6 6 0 0 1 0 12',
+  redo: 'm14.5 5 5 5-5 5m5-5h-9a6 6 0 0 0 0 12',
   shuffle: 'm17 3 4 4-4 4M3 7h3c5 0 7 10 12 10h3m-4-4 4 4-4 4M3 17h3c2 0 3-2 4-4m4-4c1-1 2-2 4-2h3',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   copy: 'M8 8h12v13H8zM16 8V3H3v13h5',
