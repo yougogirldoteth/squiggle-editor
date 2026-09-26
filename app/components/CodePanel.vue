@@ -39,14 +39,13 @@ let previousText = new Map(props.lines.map(line => [line.id, line.text]))
 let previousHighlighted = props.highlightedLineIds.join('\n')
 let previousHighlightRevision = props.highlightRevision
 let view: EditorView | undefined
-let motionQuery: MediaQueryList | undefined
 let initialFrame: number | undefined
 let highlightTimer: ReturnType<typeof setTimeout> | undefined
-let scrollTimer: ReturnType<typeof setTimeout> | undefined
 let copyTimer: ReturnType<typeof setTimeout> | undefined
 let pendingScrollId: string | undefined
 let manualScrollUntil = 0
-let automaticScrollUntil = 0
+let followingExternalIntent = false
+let automaticScrollPosition: { top: number; left: number } | undefined
 let pointerDown = false
 let ready = false
 let mounted = false
@@ -160,51 +159,61 @@ function hasCodeSelection() {
     (view.dom.contains(selection.anchorNode) || view.dom.contains(selection.focusNode))
 }
 
-function scrollToChange() {
-  scrollTimer = undefined
-  const id = pendingScrollId
-  pendingScrollId = undefined
-  const editor = view
-  const index = currentLines.findIndex(line => line.id === id)
-  if (!editor || index < 0 || index >= editor.state.doc.lines || !editor.scrollDOM.clientHeight || editor.hasFocus || pointerDown || performance.now() < manualScrollUntil || hasCodeSelection()) return
-  editor.requestMeasure({
-    key: scrollToChange,
+function canFollow(editor: EditorView) {
+  return editor === view && !editor.hasFocus && !pointerDown && performance.now() >= manualScrollUntil && (followingExternalIntent || !hasCodeSelection())
+}
+
+function queueScroll(id: string) {
+  if (!view) return
+  pendingScrollId = id
+  view.requestMeasure({
+    key: queueScroll,
     read: editor => {
-      const currentIndex = currentLines.findIndex(line => line.id === id)
-      if (currentIndex < 0 || currentIndex >= editor.state.doc.lines) return null
+      // Read the latest target at measurement time, even during a rapid drag.
+      const targetId = pendingScrollId
+      const currentIndex = currentLines.findIndex(line => line.id === targetId)
+      if (!canFollow(editor) || currentIndex < 0 || currentIndex >= editor.state.doc.lines || !editor.scrollDOM.clientHeight) return null
       const viewport = editor.scrollDOM.getBoundingClientRect()
       const line = editor.lineBlockAt(editor.state.doc.line(currentIndex + 1).from)
       const top = editor.documentTop + line.top
-      if (top >= viewport.top + 8 && top + line.height <= viewport.bottom - 8) return null
-      return editor.scrollDOM.scrollTop + top - viewport.top - (editor.scrollDOM.clientHeight - line.height) / 2
+      return {
+        id: targetId,
+        top: top >= viewport.top + 8 && top + line.height <= viewport.bottom - 8
+          ? null
+          : editor.scrollDOM.scrollTop + top - viewport.top - (editor.scrollDOM.clientHeight - line.height) / 2,
+      }
     },
-    write: (top, editor) => {
-      if (top === null || editor !== view || editor.hasFocus || pointerDown || performance.now() < manualScrollUntil || hasCodeSelection()) return
-      automaticScrollUntil = performance.now() + 500
-      editor.scrollDOM.scrollTo({ top, behavior: motionQuery?.matches ? 'auto' : 'smooth' })
+    write: (target, editor) => {
+      if (!target || target.id !== pendingScrollId || !canFollow(editor)) return
+      pendingScrollId = undefined
+      if (target.top === null) return
+      editor.scrollDOM.scrollTo({ top: target.top, behavior: 'instant' })
+      // Scroll events arrive later. Match the actual (possibly clamped) position,
+      // rather than suppressing all user scrolling for a timed grace period.
+      automaticScrollPosition = { top: editor.scrollDOM.scrollTop, left: editor.scrollDOM.scrollLeft }
     },
   })
 }
 
-function queueScroll(id: string) {
-  const now = performance.now()
-  if (!view || view.hasFocus || pointerDown || now < manualScrollUntil || hasCodeSelection()) return
-  pendingScrollId = id
-  if (scrollTimer !== undefined) return
-  scrollTimer = setTimeout(scrollToChange, Math.max(120, automaticScrollUntil - now))
-}
-
 function pauseAutomaticScroll() {
   manualScrollUntil = performance.now() + 1500
+  followingExternalIntent = false
   pendingScrollId = undefined
-  clearTimeout(scrollTimer)
-  scrollTimer = undefined
-  if (performance.now() < automaticScrollUntil && view) view.scrollDOM.scrollTo({ top: view.scrollDOM.scrollTop, behavior: 'auto' })
-  automaticScrollUntil = 0
+}
+function resumeFollowing() {
+  manualScrollUntil = 0
+  // Chrome may retain the native code selection after focus moves to a control.
+  // Follow that explicit action without changing the user's editor selection.
+  followingExternalIntent = true
 }
 function onPointerDown() { pointerDown = true; pauseAutomaticScroll() }
 function onPointerUp() { pointerDown = false }
-function onScroll() { if (performance.now() >= automaticScrollUntil) pauseAutomaticScroll() }
+function onScroll() {
+  const expected = automaticScrollPosition
+  automaticScrollPosition = undefined
+  if (expected && view && Math.abs(view.scrollDOM.scrollTop - expected.top) < 1 && Math.abs(view.scrollDOM.scrollLeft - expected.left) < 1) return
+  pauseAutomaticScroll()
+}
 function onKeyDown() { pauseAutomaticScroll() }
 
 async function copyCode() {
@@ -258,7 +267,6 @@ watch(() => ({
 onMounted(() => {
   mounted = true
   currentLines = props.lines
-  motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
   view = new EditorView({
     parent: editorHost.value,
     state: EditorState.create({
@@ -282,6 +290,7 @@ onMounted(() => {
   view.scrollDOM.addEventListener('pointerdown', onPointerDown)
   view.scrollDOM.addEventListener('scroll', onScroll, { passive: true })
   view.contentDOM.addEventListener('keydown', onKeyDown)
+  view.contentDOM.addEventListener('focus', pauseAutomaticScroll)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
   initialFrame = requestAnimationFrame(() => {
@@ -295,7 +304,6 @@ onBeforeUnmount(() => {
   copyRequest++
   if (initialFrame !== undefined) cancelAnimationFrame(initialFrame)
   clearTimeout(highlightTimer)
-  clearTimeout(scrollTimer)
   clearTimeout(copyTimer)
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
@@ -304,11 +312,14 @@ onBeforeUnmount(() => {
   view?.scrollDOM.removeEventListener('pointerdown', onPointerDown)
   view?.scrollDOM.removeEventListener('scroll', onScroll)
   view?.contentDOM.removeEventListener('keydown', onKeyDown)
+  view?.contentDOM.removeEventListener('focus', pauseAutomaticScroll)
   view?.destroy()
   view = undefined
+  pendingScrollId = undefined
+  automaticScrollPosition = undefined
 })
 
-defineExpose({ focus, getSource })
+defineExpose({ focus, getSource, resumeFollowing })
 </script>
 
 <template>

@@ -933,3 +933,107 @@ test('controls preserve custom declarations and an empty draft survives closing 
   await page.getByRole('button', { name: 'Reset original code', exact: true }).click()
   await expect(artwork(page)).toBeVisible()
 })
+
+test('code follows successive control targets promptly on desktop and phones', async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/?code=1')
+    await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+    await settleCanvas(page)
+    const timings = await page.evaluate(async () => {
+      const follow = async (tab: string, id: string, prefix: string) => {
+        document.getElementById(`tab-${tab}`)!.click()
+        await Promise.resolve()
+        const input = document.getElementById(id) as HTMLInputElement
+        input.focus()
+        const started = performance.now()
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+        input.value = String(Number(input.value) + 1)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        return new Promise<number>(resolve => {
+          const measure = () => {
+            const scroller = document.querySelector('.cm-scroller')!.getBoundingClientRect()
+            const line = [...document.querySelectorAll('.cm-line')].find(line => line.textContent!.trim().startsWith(prefix))
+            const bounds = line?.getBoundingClientRect()
+            if (bounds && line!.classList.contains('is-changed') && bounds.top >= scroller.top && bounds.bottom <= scroller.bottom) resolve(performance.now() - started)
+            else if (performance.now() - started > 1500) resolve(1500)
+            else requestAnimationFrame(measure)
+          }
+          requestAnimationFrame(measure)
+        })
+      }
+      // Reversing direction before a previous smooth scroll would have finished
+      // must follow the current input, without a timer queue or cooldown.
+      return [
+        await follow('Shape', 'point-height', 'map(decPairs[j],'),
+        await follow('Color', 'hue', 'let startColor ='),
+        await follow('Shape', 'height', 'ht = map(decPairs[27]'),
+        await follow('View', 'speed', 'let speed ='),
+      ]
+    })
+    for (const elapsed of timings) expect(elapsed).toBeLessThan(150)
+    await test.info().attach(`follow-latency-${viewport.width}`, { body: JSON.stringify(timings), contentType: 'application/json' })
+  }
+})
+
+test('code following resumes when controls take focus from selected code', async ({ page }) => {
+  await page.goto('/?code=1')
+  const editor = page.getByRole('textbox', { name: 'JavaScript source' })
+  await expect(editor).toBeVisible()
+  await editor.click()
+  await editor.press('ControlOrMeta+a')
+  const source = (await readFile('app/data/snowfro-script.formatted.js', 'utf8')).trimEnd()
+  await page.getByRole('tab', { name: 'Shape', exact: true }).click()
+  await page.getByRole('button', { name: 'Next point', exact: true }).click()
+  const pointLine = page.locator('.cm-line').filter({ hasText: 'map(decPairs[j], 0, 255,' })
+  await expectLineVisible(page, pointLine)
+  await page.getByRole('slider', { name: 'Height', exact: true }).press('ArrowRight')
+  await expectLineVisible(page, page.locator('.cm-line').filter({ hasText: 'ht = map(decPairs[27]' }))
+  expect(await copySketch(page)).toBe(source)
+})
+
+test('point gestures resume code following immediately and keep the target steady while dragging', async ({ page }) => {
+  await page.goto('/?code=1')
+  await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+  await settleCanvas(page)
+  const scroller = page.locator('.cm-scroller')
+  const readElsewhere = async () => {
+    await scroller.evaluate(element => {
+      element.dispatchEvent(new WheelEvent('wheel', { deltaY: 2000, bubbles: true }))
+      element.scrollTop = element.scrollHeight
+    })
+    await settleCanvas(page)
+  }
+  await readElsewhere()
+  await page.getByRole('tab', { name: 'Shape', exact: true }).click()
+  await page.getByRole('button', { name: 'Next point', exact: true }).click()
+  const pointLine = page.locator('.cm-line').filter({ hasText: 'map(decPairs[j], 0, 255,' })
+  await expectLineVisible(page, pointLine)
+  await readElsewhere()
+  const point = await curvePosition(page)
+  await page.mouse.move(point.x, point.y)
+  await page.evaluate(() => {
+    const canvas = document.querySelector('[aria-label="Squiggle canvas"]')!
+    ;(window as any).pointFollow = new Promise<number>(resolve => canvas.addEventListener('pointerdown', () => {
+      const began = performance.now()
+      const measure = () => {
+        const viewport = document.querySelector('.cm-scroller')!.getBoundingClientRect()
+        const line = [...document.querySelectorAll('.cm-line')].find(line => line.textContent!.trim().startsWith('map(decPairs[j],'))
+        const bounds = line?.getBoundingClientRect()
+        if (bounds && bounds.top >= viewport.top && bounds.bottom <= viewport.bottom && line!.classList.contains('is-changed')) resolve(performance.now() - began)
+        else if (performance.now() - began > 1500) resolve(1500)
+        else requestAnimationFrame(measure)
+      }
+      requestAnimationFrame(measure)
+    }, { once: true }))
+  })
+  await page.mouse.down()
+  expect(await page.evaluate(() => (window as any).pointFollow as Promise<number>)).toBeLessThan(150)
+  await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
+  const followedPosition = await scroller.evaluate(element => element.scrollTop)
+  await page.mouse.move(point.x, point.y + 26, { steps: 8 })
+  await page.mouse.up()
+  await expect(artworkHash(page)).not.toHaveValue(DEFAULT_HASH)
+  expect(await scroller.evaluate(element => element.scrollTop)).toBe(followedPosition)
+  expect(await copySketch(page)).toBe((await readFile('app/data/snowfro-script.formatted.js', 'utf8')).trimEnd())
+})

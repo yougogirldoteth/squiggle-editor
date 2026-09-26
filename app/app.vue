@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import EditorRange from '~/components/EditorRange.vue'
 import HashInput from '~/components/HashInput.vue'
-import { createLiveSketch, sketchLines, isOriginalSketch, affectedScriptLines } from '~/utils/liveSketch'
+import { createLiveSketch, sketchLines, isOriginalSketch, affectedScriptLines, pointScriptLines } from '~/utils/liveSketch'
 import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash, visibleStartHue, setStartingHue } from '~/utils/squiggle'
 import type { SquiggleType } from '~/utils/squiggle'
 import { HashHistory } from '~/utils/history'
@@ -26,6 +26,7 @@ const backgroundIndex = computed(() => backgrounds.indexOf(background.value))
 const swatches = [backgrounds[0]!, backgrounds[4]!, backgrounds[10]!]
 const speed = ref(1)
 const sketchView = () => ({ background: background.value, speed: speed.value, playing: playing.value })
+const codePanel = ref<{ resumeFollowing: () => void } | null>(null)
 const codeInitialized = ref(false)
 const customRunning = ref(false)
 const codeDraft = ref('')
@@ -42,6 +43,26 @@ const codeModified = computed(() => codeInitialized.value && !isOriginalSketch(c
 const codePending = computed(() => codeDraft.value !== appliedCode.value)
 let previewTimer: ReturnType<typeof setTimeout> | undefined
 
+function revealPointCode() {
+  if (!codeMode.value) return
+  highlightedLineIds.value = pointScriptLines()
+  highlightRevision.value++
+}
+function resumeCodeFollowing(event: Event) {
+  const target = event.target
+  if (!(target instanceof Element) || target.closest('.code-panel')) return
+  codePanel.value?.resumeFollowing()
+  if (event instanceof KeyboardEvent && target.closest('.squiggle-canvas') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) revealPointCode()
+}
+function selectPoint(index: number) {
+  selectedPoint.value = index
+  revealPointCode()
+}
+function startDrag() {
+  history.begin()
+  dragging.value = true
+  revealPointCode()
+}
 function editCode(source: string) {
   codeDraft.value = source
   highlightedLineIds.value = []
@@ -191,7 +212,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="editor" :class="{ 'has-code': codeMode }">
+  <div class="editor" :class="{ 'has-code': codeMode }" @pointerdown.capture="resumeCodeFollowing" @keydown.capture="resumeCodeFollowing">
     <header class="masthead">
       <div class="brand"><h1>Squiggle <span>Editor</span></h1></div>
       <div class="header-actions">
@@ -239,7 +260,7 @@ onBeforeUnmount(() => {
         <EditorRange id="length" label="Length" :value="traits.bytes[26]!" :display="traits.segments.toFixed(2)" title="Curve length" @start="history.begin()" @change="byte(26, $event)" @end="history.commit()" />
         <EditorRange id="height" label="Height" :value="255 - traits.bytes[27]!" :display="`${Math.round(400 / traits.ht)}%`" title="Curve height; taller to the right" @start="history.begin()" @change="byte(27, 255 - $event)" @end="history.commit()" />
         <div class="range-control point-control">
-          <div class="point-heading"><label for="point-height">Point</label><span class="point-stepper"><button aria-label="Previous point" :disabled="selectedPoint === 0" @click="selectedPoint--">‹</button><output>{{ selectedPoint + 1 }}<span>/{{ pointCount }}</span></output><button aria-label="Next point" :disabled="selectedPoint === pointCount - 1" @click="selectedPoint++">›</button></span></div>
+          <div class="point-heading"><label for="point-height">Point</label><span class="point-stepper"><button aria-label="Previous point" :disabled="selectedPoint === 0" @click="selectPoint(selectedPoint - 1)">‹</button><output>{{ selectedPoint + 1 }}<span>/{{ pointCount }}</span></output><button aria-label="Next point" :disabled="selectedPoint === pointCount - 1" @click="selectPoint(selectedPoint + 1)">›</button></span></div>
           <input id="point-height" aria-label="Point height" type="range" min="0" max="255" :value="255 - traits.bytes[selectedPoint]!" @pointerdown="history.begin()" @keydown="history.begin()" @input="byte(selectedPoint, 255 - Number(($event.target as HTMLInputElement).value))" @change="history.commit()" @blur="history.commit()">
         </div>
       </div>
@@ -259,7 +280,7 @@ onBeforeUnmount(() => {
     <div class="workspace" :class="{ 'with-code': codeMode }">
       <main class="stage" :style="{ background }">
         <ScriptPreview v-if="customRunning" :key="previewRevision" ref="scriptPreview" :source="previewSource" :hash="previewContext.hash" :view="previewContext.view" @error="codeError = $event" @ready="codeError = ''" />
-        <SquiggleCanvas v-else ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="history.begin(); dragging = true" @gesture-end="history.commit(); dragging = false" />
+        <SquiggleCanvas v-else ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="startDrag" @gesture-end="history.commit(); dragging = false" />
         <span v-if="customRunning" class="custom-sketch-label">Custom code</span>
         <div class="canvas-tools">
           <div class="play-tools">
@@ -272,7 +293,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </main>
-      <CodePanel v-if="codeMode" id="live-code" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :highlight-revision="highlightRevision" :modified="codeModified" :pending="codePending" :error="codeError" title="sketch.js" @edit="editCode" @run="runCode" @reset="resetCode" />
+      <CodePanel v-if="codeMode" id="live-code" ref="codePanel" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :highlight-revision="highlightRevision" :modified="codeModified" :pending="codePending" :error="codeError" title="sketch.js" @edit="editCode" @run="runCode" @reset="resetCode" />
     </div>
 
     <div class="toast" role="status" aria-live="polite" :class="{ visible: notice }">{{ notice }}</div>

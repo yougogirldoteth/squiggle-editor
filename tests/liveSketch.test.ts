@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { babelParse } from 'vue/compiler-sfc'
 import rawOriginal from '../app/data/snowfro-script.js?raw'
 import formattedOriginal from '../app/data/snowfro-script.formatted.js?raw'
-import { affectedScriptLines, createLiveSketch, isOriginalSketch, sketchLines, type LiveSketchView } from '../app/utils/liveSketch'
+import { affectedScriptLines, createLiveSketch, isOriginalSketch, pointScriptLines, sketchLines, type LiveSketchView } from '../app/utils/liveSketch'
 import { DEFAULT_HASH, decodeHash, parseHash, setByte, setType, TYPES } from '../app/utils/squiggle'
 
 const view: LiveSketchView = { background: '#ffffff', speed: 1, playing: false }
@@ -139,6 +139,29 @@ describe('original source line mapping', () => {
     expect(createLiveSketch().source).toBe(sketch.source)
   })
 
+  it('exposes only curve-coordinate expressions for explicit point interaction', () => {
+    const original = createLiveSketch()
+    const ids = pointScriptLines()
+    expect(ids).toHaveLength(4)
+    expect(ids.every(id => original.lines.find(line => line.id === id)!.text.includes('map(decPairs[j'))).toBe(true)
+    expect(affectedScriptLines(DEFAULT_HASH, setByte(DEFAULT_HASH, 8, 1))).toEqual(ids)
+    expect(affectedScriptLines(DEFAULT_HASH, setByte(DEFAULT_HASH, 4, 1)).slice(0, ids.length)).toEqual(ids)
+    expect(createLiveSketch().source).toBe(formattedOriginal.trimEnd())
+  })
+
+  it('prioritizes rib spacing while its flag remains enabled, retaining flag highlights', () => {
+    const original = createLiveSketch()
+    const textFor = (id: string) => original.lines.find(line => line.id === id)!.text
+    const start = setByte(setType(DEFAULT_HASH, 'Ribbed'), 24, 3)
+    const spacing = affectedScriptLines(start, setByte(start, 24, 20)).map(textFor)
+    expect(spacing[0]).toContain('map(Math.round(decPairs[24])')
+    expect(spacing.some(text => text.includes('let segmented = decPairs[24]'))).toBe(true)
+    const disable = affectedScriptLines(start, setByte(start, 24, 30)).map(textFor)
+    expect(disable[0]).toContain('let segmented = decPairs[24]')
+    const enable = affectedScriptLines(setByte(start, 24, 30), start).map(textFor)
+    expect(enable[0]).toContain('let segmented = decPairs[24]')
+  })
+
   it.each([
     ['background', '#191919', 'background(backgroundArray[backgroundIndex])'],
     ['speed', 3, 'let speed ='],
@@ -157,8 +180,23 @@ describe('original source line mapping', () => {
     const lines = sketchLines(custom)
     expect(lines.map(line => line.text).join('\n')).toBe(custom)
     expect(new Set(lines.map(line => line.id)).size).toBe(lines.length)
-    expect(lines.find(line => line.text === 'let wt = 3;')!.id).toMatch(/^custom-/)
+    expect(lines.find(line => line.text === 'let wt = 3;')!.id).toBe(original.lines.find(line => line.text === 'let wt = 2;')!.id)
     const originalHue = original.lines.find(line => line.text.includes('let startColor = decPairs[29]'))!
     expect(lines.find(line => line.text === originalHue.text)!.id).toBe(originalHue.id)
+  })
+
+  it('follows a uniquely edited hue declaration without relabeling duplicate names', () => {
+    const original = createLiveSketch().source
+    const edited = original.replace('let startColor = decPairs[29];', 'let startColor = decPairs[29] + 10;')
+    const hueId = affectedScriptLines(DEFAULT_HASH, setByte(DEFAULT_HASH, 29, 1))[0]!
+    const lines = sketchLines(edited)
+    expect(lines.find(line => line.id === hueId)!.text).toBe('let startColor = decPairs[29] + 10;')
+    expect(lines.map(line => line.text).join('\n')).toBe(edited)
+
+    const duplicate = edited + '\nfunction customHue() {\nlet startColor = 10;\n}\n'
+    const duplicateLines = sketchLines(duplicate)
+    expect(duplicateLines.find(line => line.id === hueId)).toBeUndefined()
+    expect(duplicateLines.filter(line => line.text.startsWith('let startColor')).every(line => line.id.startsWith('custom-'))).toBe(true)
+    expect(new Set(duplicateLines.map(line => line.id)).size).toBe(duplicateLines.length)
   })
 })
