@@ -298,7 +298,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </main>
-      <CodePanel v-if="codeMode" id="live-code" ref="codePanel" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :highlight-revision="highlightRevision" :modified="codeModified" :pending="codePending" :error="codeError" title="sketch.js" @edit="editCode" @run="runCode" @reset="resetCode" />
+      <CodePanel v-if="codeMode" id="live-code" ref="codePanel" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :highlight-revision="highlightRevision" :modified="codeModified" :pending="codePending" :error="codeError" @edit="editCode" @run="runCode" @reset="resetCode" />
     </div>
 
     <div class="toast" role="status" aria-live="polite" :class="{ visible: notice }">{{ notice }}</div>
