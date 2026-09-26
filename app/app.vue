@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import EditorRange from '~/components/EditorRange.vue'
 import HashInput from '~/components/HashInput.vue'
-import { createLiveSketch, sketchLines, updateSketchInputs, readSketchInputs, isOriginalSketch, affectedScriptLines } from '~/utils/liveSketch'
+import { createLiveSketch, sketchLines, isOriginalSketch, affectedScriptLines } from '~/utils/liveSketch'
 import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash, visibleStartHue, setStartingHue } from '~/utils/squiggle'
 import type { SquiggleType } from '~/utils/squiggle'
 import { HashHistory } from '~/utils/history'
@@ -31,23 +31,17 @@ const customRunning = ref(false)
 const codeDraft = ref('')
 const appliedCode = ref('')
 const previewSource = ref('')
+const previewContext = shallowRef({ hash: hash.value, view: sketchView() })
 const previewRevision = ref(0)
 const scriptPreview = ref<{ exportPng: () => Promise<Blob> } | null>(null)
 const codeError = ref('')
 const highlightedLineIds = ref<string[]>([])
+const highlightRevision = ref(0)
 const codeLines = computed(() => codeMode.value ? sketchLines(codeDraft.value) : [])
 const codeModified = computed(() => codeInitialized.value && !isOriginalSketch(codeDraft.value))
 const codePending = computed(() => codeDraft.value !== appliedCode.value)
-let syncingCodeInputs = false
 let previewTimer: ReturnType<typeof setTimeout> | undefined
 
-function canRenderNatively(source: string) {
-  if (!isOriginalSketch(source)) return false
-  const input = readSketchInputs(source)
-  return !!input.hash && !!input.background && backgrounds.includes(input.background)
-    && typeof input.speed === 'number' && input.speed >= 0.1 && input.speed <= 20
-    && typeof input.playing === 'boolean'
-}
 function editCode(source: string) {
   codeDraft.value = source
   highlightedLineIds.value = []
@@ -56,17 +50,10 @@ function runCode() {
   clearTimeout(previewTimer)
   codeError.value = ''
   const source = codeDraft.value
-  const input = readSketchInputs(source)
-  syncingCodeInputs = true
-  try {
-    if (input.hash && input.hash !== hash.value) update(input.hash, true)
-    if (input.background && backgrounds.includes(input.background)) background.value = input.background
-    if (typeof input.speed === 'number' && input.speed >= 0.1 && input.speed <= 20) speed.value = input.speed
-    if (typeof input.playing === 'boolean') playing.value = input.playing
-  } finally { syncingCodeInputs = false }
   appliedCode.value = source
-  customRunning.value = !canRenderNatively(source)
+  customRunning.value = !isOriginalSketch(source)
   previewSource.value = source
+  previewContext.value = { hash: hash.value, view: sketchView() }
   previewRevision.value++
   if (!customRunning.value) canvas.value?.resetPhase()
 }
@@ -74,7 +61,7 @@ function resetCode() {
   clearTimeout(previewTimer)
   codeInitialized.value = true
   customRunning.value = false
-  codeDraft.value = createLiveSketch(hash.value, sketchView()).source
+  codeDraft.value = createLiveSketch().source
   appliedCode.value = codeDraft.value
   previewSource.value = ''
   codeError.value = ''
@@ -95,20 +82,14 @@ async function exportArtwork() {
 }
 watch(codeMode, enabled => { if (enabled && !codeInitialized.value) resetCode() })
 watch([hash, background, speed, playing], ([nextHash, bg, nextSpeed, nextPlaying], [previousHash, oldBg, oldSpeed, oldPlaying]) => {
-  if (syncingCodeInputs || !codeInitialized.value) return
+  if (!codeInitialized.value) return
   const view = { background: bg, speed: nextSpeed, playing: nextPlaying }
   const oldView = { background: oldBg, speed: oldSpeed, playing: oldPlaying }
-  const changedInputs: ('hash' | 'background' | 'speed' | 'playing')[] = []
-  if (nextHash !== previousHash) changedInputs.push('hash')
-  if (bg !== oldBg) changedInputs.push('background')
-  if (nextSpeed !== oldSpeed) changedInputs.push('speed')
-  if (nextPlaying !== oldPlaying) changedInputs.push('playing')
-  codeDraft.value = updateSketchInputs(codeDraft.value, nextHash, view, changedInputs)
-  appliedCode.value = updateSketchInputs(appliedCode.value, nextHash, view, changedInputs)
   highlightedLineIds.value = affectedScriptLines(previousHash, nextHash, oldView, view)
+  highlightRevision.value++
   if (customRunning.value) {
     clearTimeout(previewTimer)
-    previewTimer = setTimeout(() => { previewSource.value = appliedCode.value }, 160)
+    previewTimer = setTimeout(() => { previewContext.value = { hash: nextHash, view } }, 160)
   }
 }, { flush: 'sync' })
 const tabs = ['Color', 'Shape', 'Texture', 'View'] as const
@@ -277,7 +258,7 @@ onBeforeUnmount(() => {
 
     <div class="workspace" :class="{ 'with-code': codeMode }">
       <main class="stage" :style="{ background }">
-        <ScriptPreview v-if="customRunning" :key="previewRevision" ref="scriptPreview" :source="previewSource" @error="codeError = $event" @ready="codeError = ''" />
+        <ScriptPreview v-if="customRunning" :key="previewRevision" ref="scriptPreview" :source="previewSource" :hash="previewContext.hash" :view="previewContext.view" @error="codeError = $event" @ready="codeError = ''" />
         <SquiggleCanvas v-else ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="history.begin(); dragging = true" @gesture-end="history.commit(); dragging = false" />
         <span v-if="customRunning" class="custom-sketch-label">Custom code</span>
         <div class="canvas-tools">
@@ -291,7 +272,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </main>
-      <CodePanel v-if="codeMode" id="live-code" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :modified="codeModified" :pending="codePending" :error="codeError" title="sketch.js" @edit="editCode" @run="runCode" @reset="resetCode" />
+      <CodePanel v-if="codeMode" id="live-code" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :highlight-revision="highlightRevision" :modified="codeModified" :pending="codePending" :error="codeError" title="sketch.js" @edit="editCode" @run="runCode" @reset="resetCode" />
     </div>
 
     <div class="toast" role="status" aria-live="polite" :class="{ visible: notice }">{{ notice }}</div>

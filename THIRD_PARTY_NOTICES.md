@@ -21,7 +21,7 @@ The unmodified source is retained in `app/data/snowfro-script.js`. `app/data/sno
 
 ### Code mode
 
-Code mode displays `app/data/snowfro-script.formatted.js`, a formatting-only copy of the verified source produced with Prettier 3.8.1 for readability. The exact source remains available separately. The editor's generated token input and view-setting wrapper are distinct from Snowfro's script; they are not represented as part of the on-chain source. Custom code runs with the bundled p5 runtime rather than the editor's native Canvas adaptation.
+Code mode displays `app/data/snowfro-script.formatted.js`, a formatting-only copy of the verified source produced with Prettier 3.8.1 for readability. The exact source remains available separately. The displayed and copied document contains only that formatted source, with no added comments, declarations, or wrapper. Token data and view settings are provided separately by the preview host, outside the editable script. Form controls highlight the affected original expressions without rewriting the source. Custom code runs with the bundled p5 runtime rather than the editor's native Canvas adaptation.
 
 ### Collection examples
 

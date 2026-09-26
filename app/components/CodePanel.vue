@@ -18,7 +18,8 @@ const props = withDefaults(defineProps<{
   pending?: boolean
   error?: string
   highlightedLineIds?: readonly string[]
-}>(), { title: 'squiggle.js', modified: false, pending: false, error: '', highlightedLineIds: () => [] })
+  highlightRevision?: number
+}>(), { title: 'squiggle.js', modified: false, pending: false, error: '', highlightedLineIds: () => [], highlightRevision: 0 })
 const emit = defineEmits<{
   edit: [source: string]
   run: []
@@ -36,6 +37,7 @@ const highlightExpiry = new Map<string, number>()
 let currentLines: readonly CodeLine[] = props.lines
 let previousText = new Map(props.lines.map(line => [line.id, line.text]))
 let previousHighlighted = props.highlightedLineIds.join('\n')
+let previousHighlightRevision = props.highlightRevision
 let view: EditorView | undefined
 let motionQuery: MediaQueryList | undefined
 let initialFrame: number | undefined
@@ -222,11 +224,13 @@ async function copyCode() {
 watch(() => ({
   lines: props.lines.map(line => ({ id: line.id, text: line.text, focus: line.focus })),
   highlighted: [...props.highlightedLineIds],
-}), ({ lines, highlighted }) => {
+  revision: props.highlightRevision,
+}), ({ lines, highlighted, revision }) => {
   const changed = lines.filter(line => previousText.get(line.id) !== line.text)
-  const explicitChanged = highlighted.join('\n') !== previousHighlighted
+  const explicitChanged = revision !== previousHighlightRevision || highlighted.join('\n') !== previousHighlighted
   previousText = new Map(lines.map(line => [line.id, line.text]))
   previousHighlighted = highlighted.join('\n')
+  previousHighlightRevision = revision
   currentLines = lines
   if (!view) return
   const changes = view.state.changes(documentChanges(view.state.doc, lines))

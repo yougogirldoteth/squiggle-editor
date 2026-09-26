@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import originalScript from '../data/snowfro-script.formatted.js?raw'
 
-const props = withDefaults(defineProps<{ source: string; runId?: number }>(), { runId: 0 })
+const props = withDefaults(defineProps<{
+  source: string
+  hash: string
+  view: { background: string; speed: number; playing: boolean }
+  runId?: number
+}>(), { runId: 0 })
 const emit = defineEmits<{ error: [message: string]; ready: [] }>()
 const host = ref<HTMLDivElement>()
 const frame = ref<HTMLIFrameElement>()
@@ -22,9 +28,17 @@ function scriptString(value: string) {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
 }
 
+function hasOriginalDeclaration(source: string, name: string) {
+  const declaration = originalScript.match(new RegExp(`^let ${name} = [\\s\\S]*?;`, 'm'))?.[0]
+  return declaration !== undefined && source.includes(declaration)
+}
+
 function previewDocument(source: string, token: string) {
   const library = new URL('/vendor/p5-1.0.0.min.js', window.location.href).href
   const csp = `default-src 'none'; script-src 'unsafe-inline' ${library}; connect-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'`
+  const originalSpeed = hasOriginalDeclaration(source, 'speed')
+  const originalPlaying = hasOriginalDeclaration(source, 'loops')
+  const originalBackground = hasOriginalDeclaration(source, 'backgroundIndex') && hasOriginalDeclaration(source, 'backgroundArray')
   return `<!doctype html><html><head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
@@ -78,9 +92,23 @@ function previewDocument(source: string, token: string) {
 <\/script>
 <script src="${library}"><\/script>
 <script>
-const sketch = document.createElement('script');
-sketch.textContent = ${scriptString(source + '\n//# sourceURL=edited-squiggle.js')};
-document.head.appendChild(sketch);
+window.tokenData = { hashes: [${scriptString(props.hash)}] };
+(function () {
+  const sketch = document.createElement('script');
+  sketch.textContent = ${scriptString(source)};
+  document.head.appendChild(sketch);
+})();
+<\/script>
+<script>
+(function () {
+  // These are host controls, separate from the exact editable script above.
+  // Changed declarations and values assigned by custom code take precedence.
+  if (${originalSpeed} && typeof speed === 'number' && speed === 1) speed = ${JSON.stringify(props.view.speed)};
+  if (${originalPlaying} && typeof loops === 'boolean' && loops === false) loops = ${JSON.stringify(props.view.playing)};
+  if (${originalBackground} && typeof backgroundIndex === 'number' && backgroundIndex === 0 && typeof backgroundArray !== 'undefined' && JSON.stringify(backgroundArray) === '[255,225,200,175,150,125,100,75,50,25,0,25,50,75,100,125,150,175,200,225]') {
+    backgroundArray[0] = ${scriptString(props.view.background)};
+  }
+})();
 <\/script>
 </body></html>`
 }
@@ -170,7 +198,7 @@ function exportPng(): Promise<Blob> {
   })
 }
 
-watch(() => [props.source, props.runId], run)
+watch(() => [props.source, props.hash, props.view.background, props.view.speed, props.view.playing, props.runId], run)
 onMounted(() => {
   mounted = true
   window.addEventListener('message', onMessage)

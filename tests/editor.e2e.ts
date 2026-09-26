@@ -776,12 +776,14 @@ test('code mode displays the verified script and follows the original expression
   await expect(page).toHaveURL(/code=1/)
   const source = await copySketch(page)
   const original = (await readFile('app/data/snowfro-script.formatted.js', 'utf8')).trimEnd()
-  expect(source).toContain(original)
-  expect(source).toContain(`const editorHash = "${updated}";`)
+  expect(source).toBe(original)
+  await expect(line).not.toHaveClass(/is-changed/)
+  await hue.press('ArrowRight')
+  await expect(line).toHaveClass(/is-changed/)
   await expect(page.getByRole('link', { name: 'On-chain', exact: true })).toBeVisible()
   await toggle.click()
   await expect(code).toHaveCount(0)
-  await expect(artworkHash(page)).toHaveValue(updated)
+  await expect(artworkHash(page)).not.toHaveValue(updated)
 })
 
 test('code mode keeps phone canvas, controls and editable source available together', async ({ page }) => {
@@ -803,7 +805,7 @@ test('code mode keeps phone canvas, controls and editable source available toget
     await settleCanvas(page)
     await page.getByRole('slider', { name: 'Speed', exact: true }).focus()
     await page.getByRole('slider', { name: 'Speed', exact: true }).press('ArrowRight')
-    const line = page.locator('[data-line-id="view-speed"]')
+    const line = page.locator('.cm-line').filter({ hasText: 'let speed = 1;' })
     await expect(line).toHaveClass(/is-changed/)
     await expectLineVisible(page, line)
   }
@@ -833,24 +835,16 @@ test('code following respects manual scrolling and reduced motion during rapid e
   expect(await code.evaluate(element => element.scrollTop)).toBe(scrollTop)
   expect(await page.locator('.code-panel').evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0)
   const source = await copySketch(page)
-  expect(source).toContain(`const editorHash = "${await page.locator('#hash').inputValue()}";`)
+  expect(source).toBe((await readFile('app/data/snowfro-script.formatted.js', 'utf8')).trimEnd())
 })
 
-test('code edits can update the hash, run custom drawing logic, preserve drafts and return to the original', async ({ page }) => {
+test('original source runs custom drawing logic with separate token data, preserves drafts and resets', async ({ page }) => {
   await page.goto('/?code=1')
   await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
   const original = await copySketch(page)
-  const updatedHash = setByte(DEFAULT_HASH, 29, 90)
-  await editSketch(page, original.replace(DEFAULT_HASH, updatedHash))
-  await page.getByRole('textbox', { name: 'JavaScript source' }).press('ControlOrMeta+Enter')
-  await expect(artworkHash(page)).toHaveValue(updatedHash)
-  await expect(artwork(page)).toBeVisible()
-  await expect(page.locator('iframe')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Undo', exact: true }).click()
-  await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
-
+  expect(original).toBe((await readFile('app/data/snowfro-script.formatted.js', 'utf8')).trimEnd())
   const current = await copySketch(page)
-  const custom = current.replace('let wt = 2;', 'let wt = 4;') + '\ndocument.body.dataset.width = String(wt);'
+  const custom = current.replace('let wt = 2;', 'let wt = 4;') + '\ndocument.body.dataset.width = String(wt);\ndocument.body.dataset.hash = tokenData.hashes[0];'
   await editSketch(page, custom)
   await expect(artwork(page)).toBeVisible()
   await page.getByRole('button', { name: 'Run code', exact: true }).click()
@@ -865,6 +859,7 @@ test('code edits can update the hash, run custom drawing logic, preserve drafts 
   await editSketch(page, custom.replace('let wt = 4;', 'let wt = 6;'))
   await page.getByRole('slider', { name: 'Starting hue' }).press('ArrowRight')
   await expect(frame.locator('body')).toHaveAttribute('data-width', '4')
+  await expect(frame.locator('body')).toHaveAttribute('data-hash', await artworkHash(page).inputValue())
   expect(await copySketch(page)).toContain('let wt = 6;')
   await page.getByRole('button', { name: 'Code mode', exact: true }).click()
   await expect(frame.locator('canvas')).toBeVisible()
@@ -888,7 +883,7 @@ test('code edits can update the hash, run custom drawing logic, preserve drafts 
   await page.getByRole('button', { name: 'Reset original code', exact: true }).click()
   await expect(artwork(page)).toBeVisible()
   await expect(page.locator('iframe')).toHaveCount(0)
-  expect(await copySketch(page)).toContain('let wt = 2;')
+  expect(await copySketch(page)).toBe(original)
 })
 
 test('custom code errors stay recoverable and edited scripts cannot reach the editor document', async ({ page }) => {
@@ -915,21 +910,18 @@ test('custom code errors stay recoverable and edited scripts cannot reach the ed
 })
 
 
-test('unrelated controls preserve pending code inputs and an empty draft survives closing the pane', async ({ page }) => {
+test('controls preserve custom declarations and an empty draft survives closing the pane', async ({ page }) => {
   await page.goto('/?code=1')
   await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
   const original = await copySketch(page)
-  const draftHash = setByte(DEFAULT_HASH, 29, 45)
-  await editSketch(page, original.replace(DEFAULT_HASH, draftHash).replace('const editorSpeed = 1;', 'const editorSpeed = 3;'))
+  const draft = original.replace('let speed = 1;', 'let speed = 3;')
+    + '\nwindow.addEventListener("load", () => { document.body.dataset.speed = String(speed); });'
+  await editSketch(page, draft)
   await page.getByRole('button', { name: 'Gray background', exact: true }).click()
-  const after = await copySketch(page)
-  expect(after).toContain(draftHash)
-  expect(after).toContain('const editorSpeed = 3;')
-  expect(after).toContain('const editorBackground = "#969696";')
+  expect(await copySketch(page)).toBe(draft)
   await page.getByRole('button', { name: 'Run code', exact: true }).click()
-  await expect(artworkHash(page)).toHaveValue(draftHash)
-  await page.getByRole('tab', { name: 'View', exact: true }).click()
-  await expect(page.getByRole('slider', { name: 'Speed', exact: true })).toHaveValue('3')
+  await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute('data-speed', '3')
+  await expect(artworkHash(page)).toHaveValue(DEFAULT_HASH)
 
   await editSketch(page, '')
   await page.getByRole('button', { name: 'Code mode', exact: true }).click()
