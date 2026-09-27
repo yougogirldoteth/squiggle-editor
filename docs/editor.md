@@ -80,3 +80,7 @@ Downloads are named `squiggle-<hash>.png`, or `squiggle-custom-<hash>.png` for c
 Exports use the current background and animation phase and omit the editing guides. Custom export captures the last applied code, not an unapplied draft. Browser rendering and device pixel ratio can affect the pixels; see [rendering fidelity](rendering.md#rendering-fidelity).
 
 Custom exports are limited to 8192 pixels per side and 16,777,216 total pixels, with a 32 MiB limit on the encoded response. Invalid images and animated PNGs are rejected.
+
+## Link previews
+
+Shared links show the hash and background encoded in their URL as a 1200 × 630 social image, without added text. The image uses the standard PNG export composition, fitted without cropping, at animation phase zero. A link without a hash uses the editor's default artwork. Custom code and the current animation phase are browser-only and are not included in shared links. Server and browser rasterization can differ slightly.

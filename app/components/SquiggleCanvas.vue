@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue'
-import { buildGeometryFrame, decodeHash, dragCurve, drawSquiggle, nearestCurvePoint, setByte } from '~/utils/squiggle'
+import { buildGeometryFrame, decodeHash, dragCurve, drawSquiggle, drawSquiggleExport, nearestCurvePoint, setByte } from '~/utils/squiggle'
 
 const props = withDefaults(defineProps<{
   hash: string
@@ -350,14 +350,7 @@ function exportPng() {
   output.height = 2000
   const context = output.getContext('2d')
   if (!context) return
-  // A fixed print margin preserves the original 3:2 geometry while leaving
-  // room for valid spline overshoot and the widest Bold/Fuzzy marks.
-  context.fillStyle = props.background
-  context.fillRect(0, 0, output.width, output.height)
-  context.save()
-  context.translate(150, 100)
-  drawSquiggle(context, exportHash, 2700, 1800, { background: props.background, phase })
-  context.restore()
+  drawSquiggleExport(context, exportHash, 3000, 2000, { background: props.background, phase })
   output.toBlob((blob) => {
     if (!blob) return
     const url = URL.createObjectURL(blob)

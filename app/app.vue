@@ -1,10 +1,27 @@
 <script setup lang="ts">
+import { socialPreviewInputs } from '~/utils/socialPreview'
 import EditorRange from '~/components/EditorRange.vue'
 import HashInput from '~/components/HashInput.vue'
 import { createLiveSketch, sketchLines, isOriginalSketch, affectedScriptLines, pointScriptLines } from '~/utils/liveSketch'
 import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash, visibleStartHue, setStartingHue } from '~/utils/squiggle'
 import type { SquiggleType } from '~/utils/squiggle'
 import { HashHistory } from '~/utils/history'
+
+const previewQuery = useRequestURL().searchParams
+const social = socialPreviewInputs(previewQuery.get('hash'), previewQuery.get('bg'))
+useSeoMeta({
+  ogTitle: 'Squiggle Editor',
+  ogDescription: 'An independent editor for the Chromie Squiggle algorithm by Snowfro.',
+  ogType: 'website',
+  ogUrl: `${useSiteConfig().url}/?hash=${social.hash}&bg=${social.background}`,
+  twitterCard: 'summary_large_image',
+  twitterTitle: 'Squiggle Editor',
+  twitterDescription: 'An independent editor for the Chromie Squiggle algorithm by Snowfro.',
+})
+defineOgImage('Artwork', {
+  src: `/og/artwork/${social.hash}/${social.background}.png`,
+  background: `#${social.background}`,
+}, { alt: 'Chromie Squiggle by Snowfro', cacheKey: `artwork-v1-${social.hash}-${social.background}` })
 
 const CodePanel = defineAsyncComponent(() => import('~/components/CodePanel.vue'))
 const ScriptPreview = defineAsyncComponent(() => import('~/components/ScriptPreview.vue'))

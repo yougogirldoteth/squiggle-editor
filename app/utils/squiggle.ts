@@ -433,3 +433,13 @@ export function drawSquiggle(ctx: CanvasRenderingContext2D, hash: string, width:
   }
   ctx.restore()
 }
+
+/** The same 3:2 composition for downloads and social previews. */
+export function drawSquiggleExport(ctx: CanvasRenderingContext2D, hash: string, width: number, height: number, options: { background: string, phase?: number }): void {
+  ctx.fillStyle = options.background
+  ctx.fillRect(0, 0, width, height)
+  ctx.save()
+  ctx.translate(width * 0.05, height * 0.05)
+  drawSquiggle(ctx, hash, width * 0.9, height * 0.9, options)
+  ctx.restore()
+}

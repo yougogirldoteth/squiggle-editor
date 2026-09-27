@@ -1,6 +1,9 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-09-25',
   devtools: { enabled: false },
+  modules: ['nuxt-og-image'],
+  site: { url: 'https://squiggle.worldcomputer.art' },
+  ogImage: { defaults: { width: 1200, height: 630 } },
   css: ['~/assets/editor.css'],
   routeRules: {
     '/**': {
