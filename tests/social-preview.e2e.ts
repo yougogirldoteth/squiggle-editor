@@ -17,7 +17,12 @@ test('social previews are present in server HTML and both image methods work', a
     expect(Buffer.byteLength(html)).toBeLessThan(500_000)
     expect(html).toContain('content="summary_large_image"')
     const url = imageUrl(html)
-    expect(url.protocol).toBe('https:')
+    // Nuxt's development server uses its local HTTP origin; public cards must use HTTPS.
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      expect(['http:', 'https:']).toContain(url.protocol)
+    } else {
+      expect(url.protocol).toBe('https:')
+    }
     const path = url.pathname + url.search
     const head = await request.head(path, { headers: { 'user-agent': 'Twitterbot/1.0' } })
     const get = await request.get(path)
