@@ -344,6 +344,7 @@ function resetPhase() {
 
 function exportPng() {
   if (!mounted || width.value <= 0 || height.value <= 0) return
+  const exportHash = renderHash.value
   const output = document.createElement('canvas')
   output.width = 3000
   output.height = 2000
@@ -355,14 +356,14 @@ function exportPng() {
   context.fillRect(0, 0, output.width, output.height)
   context.save()
   context.translate(150, 100)
-  drawSquiggle(context, renderHash.value, 2700, 1800, { background: props.background, phase })
+  drawSquiggle(context, exportHash, 2700, 1800, { background: props.background, phase })
   context.restore()
   output.toBlob((blob) => {
     if (!blob) return
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = 'squiggle.png'
+    link.download = `squiggle-${exportHash}.png`
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }, 'image/png')

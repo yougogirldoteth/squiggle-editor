@@ -73,10 +73,11 @@ test('custom export removes PNG metadata while preserving the rendered pixels', 
   await page.frameLocator('iframe').locator('canvas').evaluate((canvas, data) => {
     (canvas as HTMLCanvasElement).toDataURL = () => data
   }, `data:image/png;base64,${modified.toString('base64')}`)
+  const exportHash = await page.getByRole('textbox', { name: 'Hash', exact: true }).inputValue()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export PNG', exact: true }).click()
   const download = await downloadPromise
-  expect(download.suggestedFilename()).toBe('squiggle-custom.png')
+  expect(download.suggestedFilename()).toBe(`squiggle-custom-${exportHash}.png`)
   const stream = await download.createReadStream()
   const parts: Buffer[] = []
   for await (const part of stream!) parts.push(Buffer.from(part))

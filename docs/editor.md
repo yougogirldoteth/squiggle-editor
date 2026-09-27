@@ -66,7 +66,7 @@ Custom code runs only in your browser after you choose **Run**. It is never eval
 
 This is not a hardened service for executing arbitrary hostile JavaScript. Run code you trust: a script can still consume CPU or memory and freeze its tab, and content-security policies are not a complete network firewall for every browser API (including WebRTC). The sandbox does not provide a CPU quota or protect against browser vulnerabilities.
 
-The **Export** button accepts only a response from the current preview for an outstanding export request. The editor checks image structure and dimensions, decodes it, and creates a fresh PNG from the pixels before downloading `squiggle-custom.png`. Metadata and arbitrary returned bytes are not passed through. Restarting or resetting the preview cancels pending exports.
+The **Export** button accepts only a response from the current preview for an outstanding export request. The editor checks image structure and dimensions, decodes it, and creates a fresh PNG from the pixels before downloading `squiggle-custom-<hash>.png`. Metadata and arbitrary returned bytes are not passed through. Restarting or resetting the preview cancels pending exports.
 
 ## Export
 
@@ -74,6 +74,8 @@ The **Export** button accepts only a response from the current preview for an ou
 | --- | --- |
 | Standard renderer | 3000 × 2000, fixed 3:2 frame and 5% outer margin. |
 | Custom code | The running p5 canvas at its current pixel dimensions. |
+
+Downloads are named `squiggle-<hash>.png`, or `squiggle-custom-<hash>.png` for custom code, using the full hash captured when Export is clicked.
 
 Exports use the current background and animation phase and omit the editing guides. Custom export captures the last applied code, not an unapplied draft. Browser rendering and device pixel ratio can affect the pixels; see [rendering fidelity](rendering.md#rendering-fidelity).
 

@@ -83,10 +83,11 @@ function changedBytes(before: string, after: string) {
 }
 
 async function downloadPng(page: Page, saveName?: string) {
+  const exportHash = await artworkHash(page).inputValue()
   const pendingDownload = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export PNG' }).click()
   const download = await pendingDownload
-  expect(download.suggestedFilename()).toBe('squiggle.png')
+  expect(download.suggestedFilename()).toBe(`squiggle-${exportHash}.png`)
   const png = await readFile((await download.path())!)
   expect(png.subarray(1, 4).toString()).toBe('PNG')
   expect(png.readUInt32BE(16)).toBe(3000)
@@ -989,9 +990,10 @@ test('original source runs custom drawing logic with separate token data, preser
   expect(await copySketch(page)).toContain('let wt = 6;')
   await page.getByRole('button', { name: 'Run code', exact: true }).click()
   await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute('data-width', '6')
+  const exportHash = await artworkHash(page).inputValue()
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export PNG', exact: true }).click()
-  expect((await download).suggestedFilename()).toBe('squiggle-custom.png')
+  expect((await download).suggestedFilename()).toBe(`squiggle-custom-${exportHash}.png`)
   for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(viewport)
     // Resizing remounts the sketch, so reacquire the frame if a measurement

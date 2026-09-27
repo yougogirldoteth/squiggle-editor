@@ -90,13 +90,14 @@ function resetCode() {
 }
 async function exportArtwork() {
   if (!customRunning.value) { canvas.value?.exportPng(); return }
+  const exportHash = hash.value
   try {
     const blob = await scriptPreview.value?.exportPng()
     if (!blob) return
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = 'squiggle-custom.png'
+    anchor.download = `squiggle-custom-${exportHash}.png`
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (error) { announce(error instanceof Error ? error.message : 'Could not export this sketch.') }
