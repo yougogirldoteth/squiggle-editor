@@ -1,4 +1,12 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+
+async function clickPreviewControl(control: Locator) {
+  // A newly mounted cross-origin frame can be visible before Chrome routes
+  // native input into it. Move there and let it paint before pressing/releasing.
+  await control.hover()
+  await control.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await control.click({ delay: 40 })
+}
 
 async function runSource(page: Page, source: string) {
   const editor = page.getByRole('textbox', { name: 'JavaScript source' })
@@ -101,7 +109,7 @@ for (const method of ['location', 'link', 'refresh'] as const) {
       document.body.appendChild(button);
     }`)
     await expect(page.frameLocator('iframe').locator('canvas')).toBeVisible()
-    await page.frameLocator('iframe').getByRole(method === 'link' ? 'link' : 'button', { name: 'Try navigation' }).click()
+    await clickPreviewControl(page.frameLocator('iframe').getByRole(method === 'link' ? 'link' : 'button', { name: 'Try navigation' }))
     await expect.poll(() => violations.some(message => message.includes("frame-src 'none'") && message.includes('sketch-canary.invalid'))).toBe(true)
     expect(attempted).toEqual([])
     expect(page.url()).toContain('/?code=1')
@@ -152,7 +160,7 @@ test('custom code cannot initiate its own download even after a user clicks its 
     document.body.appendChild(button);
   }`)
   await expect(page.frameLocator('iframe').locator('canvas')).toBeVisible()
-  await page.frameLocator('iframe').getByRole('button', { name: 'Try download' }).click()
+  await clickPreviewControl(page.frameLocator('iframe').getByRole('button', { name: 'Try download' }))
   await expect(page.frameLocator('iframe').locator('body')).toHaveAttribute('data-download-attempt', 'complete')
   // Chromium can reject sandbox downloads silently. Observe the actual browser
   // download channel after the click, with the listener already armed above.
