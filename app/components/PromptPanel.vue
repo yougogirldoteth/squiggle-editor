@@ -23,6 +23,14 @@ function cancel(text = 'Cancelled. Your squiggle is unchanged.') {
 async function generate() {
   const prompt = draft.value.trim()
   if (busy.value || !prompt || draft.value.length > 600) return
+  if (/^(?:this\s+is\s+pointless|keep\s+going)[.!?]*$/i.test(prompt)) {
+    error.value = false
+    lastPrompt.value = prompt
+    message.value = 'Keep going.'
+    action.value?.focus({ preventScroll: true })
+    emit('apply', '0xb8e6ffe6ffe6ffe6ffe6ffe6ffe6ffbcff88ff000062200f1e65ff00ff390023')
+    return
+  }
   const baseHash = props.hash
   const controller = new AbortController()
   active = controller
