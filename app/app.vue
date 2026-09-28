@@ -2,6 +2,7 @@
 import { socialPreviewInputs } from '~/utils/socialPreview'
 import EditorRange from '~/components/EditorRange.vue'
 import HashInput from '~/components/HashInput.vue'
+import PromptPanel from '~/components/PromptPanel.vue'
 // Keep the preview shell synchronous: Run followed immediately by Reset must
 // not leave an unresolved async branch inside Nuxt's Suspense boundary.
 import ScriptPreview from '~/components/ScriptPreview.vue'
@@ -39,6 +40,11 @@ const playing = ref(false)
 const dragging = ref(false)
 const drawMode = ref(false)
 const drawToggle = ref<HTMLButtonElement>()
+const promptMode = ref(false)
+const promptDraft = ref('')
+const promptToggle = ref<HTMLButtonElement>()
+const promptEditRevision = ref(0)
+watch(hashDraft, value => { if (value !== hash.value) promptEditRevision.value++ }, { flush: 'sync' })
 const codeMode = ref(false)
 const background = ref('#ffffff')
 const grayLevels = [255, 225, 200, 175, 150, 125, 100, 75, 50, 25, 0]
@@ -80,7 +86,7 @@ function selectPoint(index: number) {
   revealPointCode()
 }
 function startDrag() {
-  history.begin()
+  beginManualEdit()
   dragging.value = true
   revealPointCode()
 }
@@ -90,6 +96,7 @@ function editCode(source: string) {
 }
 function runCode() {
   drawMode.value = false
+  promptMode.value = false
   clearTimeout(previewTimer)
   codeError.value = ''
   const source = codeDraft.value
@@ -169,6 +176,7 @@ function update(value: string, commit = false) {
   if (commit) history.commit()
 }
 function byte(index: number, value: number) { update(setByte(hash.value, index, value)) }
+function beginManualEdit() { history.begin(); promptEditRevision.value++ }
 function selectTab(tab: typeof tabs[number]) { history.commit(); activeTab.value = tab }
 function tabKey(event: KeyboardEvent, index: number) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -180,8 +188,19 @@ function tabKey(event: KeyboardEvent, index: number) {
 function chooseType(type: SquiggleType) { update(setType(hash.value, type), true) }
 function toggleDraw() {
   history.commit()
+  promptMode.value = false
   drawMode.value = !drawMode.value
   if (drawMode.value) playing.value = false
+}
+function togglePrompt() {
+  history.commit()
+  drawMode.value = false
+  promptMode.value = !promptMode.value
+  if (promptMode.value) playing.value = false
+}
+function closePrompt() {
+  promptMode.value = false
+  nextTick(() => promptToggle.value?.focus({ preventScroll: true }))
 }
 function closeDraw() {
   drawMode.value = false
@@ -189,6 +208,7 @@ function closeDraw() {
 }
 function togglePlayback() {
   drawMode.value = false
+  promptMode.value = false
   playing.value = !playing.value
 }
 function applyDrawing(value: string) {
@@ -257,7 +277,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="editor" :class="{ 'has-code': codeMode }" @pointerdown.capture="resumeCodeFollowing" @keydown.capture="resumeCodeFollowing">
+  <div class="editor" :class="{ 'has-code': codeMode, 'has-prompt': promptMode }" @pointerdown.capture="resumeCodeFollowing" @keydown.capture="resumeCodeFollowing">
     <header class="masthead">
       <div class="brand"><h1>Squiggle <span>Editor</span></h1></div>
       <div class="header-actions">
@@ -294,24 +314,24 @@ onBeforeUnmount(() => {
         <button v-for="(tab, index) in tabs" :id="`tab-${tab}`" :key="tab" role="tab" :aria-selected="activeTab === tab" :aria-controls="`panel-${tab}`" :tabindex="activeTab === tab ? 0 : -1" @click="selectTab(tab)" @keydown="tabKey($event, index)">{{ tab }}</button>
       </div>
       <div v-show="activeTab === 'Color'" id="panel-Color" class="tab-controls color-controls" role="tabpanel" aria-labelledby="tab-Color">
-      <EditorRange id="hue" label="Starting hue" :value="startingHue" :display="`${Math.round(startingHue / 255 * 360)}°`" spectrum @start="history.begin()" @change="update(setStartingHue(hash, $event))" @end="history.commit()" />
-      <EditorRange id="spread" label="Color spread" :min="3" :value="traits.hyper ? lastSpread : traits.bytes[28]!" :display="traits.hyper ? 'Hyper' : traits.spread.toFixed(1)" :disabled="traits.hyper" @start="history.begin()" @change="byte(28, $event)" @end="history.commit()" />
+      <EditorRange id="hue" label="Starting hue" :value="startingHue" :display="`${Math.round(startingHue / 255 * 360)}°`" spectrum @start="beginManualEdit" @change="update(setStartingHue(hash, $event))" @end="history.commit()" />
+      <EditorRange id="spread" label="Color spread" :min="3" :value="traits.hyper ? lastSpread : traits.bytes[28]!" :display="traits.hyper ? 'Hyper' : traits.spread.toFixed(1)" :disabled="traits.hyper" @start="beginManualEdit" @change="byte(28, $event)" @end="history.commit()" />
       <div class="color-toggles">
         <button class="toggle-button" :class="{ active: traits.reverse }" :aria-pressed="traits.reverse" title="Reverse color direction" @click="update(setByte(hash, 30, traits.reverse ? 128 : 0), true)"><EditorIcon name="reverse" /><span>Reverse</span></button>
         <button class="toggle-button hyper-button" :class="{ active: traits.hyper }" :aria-pressed="traits.hyper" title="Hyper spectrum" @click="toggleHyper"><EditorIcon name="spark" /><span>Hyper</span></button>
       </div>
       </div>
       <div v-show="activeTab === 'Shape'" id="panel-Shape" class="tab-controls shape-controls" role="tabpanel" aria-labelledby="tab-Shape">
-        <EditorRange id="length" label="Length" :value="traits.bytes[26]!" :display="traits.segments.toFixed(2)" title="Curve length" @start="history.begin()" @change="byte(26, $event)" @end="history.commit()" />
-        <EditorRange id="height" label="Height" :value="255 - traits.bytes[27]!" :display="`${Math.round(400 / traits.ht)}%`" title="Curve height; taller to the right" @start="history.begin()" @change="byte(27, 255 - $event)" @end="history.commit()" />
+        <EditorRange id="length" label="Length" :value="traits.bytes[26]!" :display="traits.segments.toFixed(2)" title="Curve length" @start="beginManualEdit" @change="byte(26, $event)" @end="history.commit()" />
+        <EditorRange id="height" label="Height" :value="255 - traits.bytes[27]!" :display="`${Math.round(400 / traits.ht)}%`" title="Curve height; taller to the right" @start="beginManualEdit" @change="byte(27, 255 - $event)" @end="history.commit()" />
         <div class="range-control point-control">
           <div class="point-heading"><label for="point-height">Point</label><span class="point-stepper"><button aria-label="Previous point" :disabled="selectedPoint === 0" @click="selectPoint(selectedPoint - 1)">‹</button><output>{{ selectedPoint + 1 }}<span>/{{ pointCount }}</span></output><button aria-label="Next point" :disabled="selectedPoint === pointCount - 1" @click="selectPoint(selectedPoint + 1)">›</button></span></div>
-          <input id="point-height" aria-label="Point height" type="range" min="0" max="255" :value="255 - traits.bytes[selectedPoint]!" @pointerdown="history.begin()" @keydown="history.begin()" @input="byte(selectedPoint, 255 - Number(($event.target as HTMLInputElement).value))" @change="history.commit()" @blur="history.commit()">
+          <input id="point-height" aria-label="Point height" type="range" min="0" max="255" :value="255 - traits.bytes[selectedPoint]!" @pointerdown="beginManualEdit" @keydown="beginManualEdit" @input="byte(selectedPoint, 255 - Number(($event.target as HTMLInputElement).value))" @change="history.commit()" @blur="history.commit()">
         </div>
       </div>
       <div v-show="activeTab === 'Texture'" id="panel-Texture" class="tab-controls texture-controls" role="tabpanel" aria-labelledby="tab-Texture">
-        <EditorRange id="spacing" label="Spacing" :max="29" :value="Math.min(29, traits.bytes[24]!)" :display="traits.type === 'Ribbed' ? String(Math.floor(3 + 17 * traits.bytes[24]! / 230)) : '—'" :disabled="traits.type !== 'Ribbed'" title="Ribbed spacing" @start="history.begin()" @change="byte(24, $event)" @end="history.commit()" />
-        <EditorRange id="rib-color" label="Rib color" :value="traits.bytes[25]!" :display="traits.type === 'Ribbed' ? `${Math.round(traits.bytes[25]! / 255 * 100)}%` : '—'" :disabled="traits.type !== 'Ribbed'" grayscale title="Ribbed grayscale" @start="history.begin()" @change="byte(25, $event)" @end="history.commit()" />
+        <EditorRange id="spacing" label="Spacing" :max="29" :value="Math.min(29, traits.bytes[24]!)" :display="traits.type === 'Ribbed' ? String(Math.floor(3 + 17 * traits.bytes[24]! / 230)) : '—'" :disabled="traits.type !== 'Ribbed'" title="Ribbed spacing" @start="beginManualEdit" @change="byte(24, $event)" @end="history.commit()" />
+        <EditorRange id="rib-color" label="Rib color" :value="traits.bytes[25]!" :display="traits.type === 'Ribbed' ? `${Math.round(traits.bytes[25]! / 255 * 100)}%` : '—'" :disabled="traits.type !== 'Ribbed'" grayscale title="Ribbed grayscale" @start="beginManualEdit" @change="byte(25, $event)" @end="history.commit()" />
         <button v-if="traits.type !== 'Ribbed'" class="texture-context" @click="chooseType('Ribbed')">Ribbed <EditorIcon name="arrow" /></button>
         <span v-else class="texture-context">Ribbed</span>
       </div>
@@ -322,7 +342,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div class="workspace" :class="{ 'with-code': codeMode }">
+    <div class="workspace" :class="{ 'with-code': codeMode, 'with-prompt': promptMode }">
       <main class="stage" :style="{ background }">
         <ScriptPreview v-if="customRunning" :key="previewRevision" ref="scriptPreview" :source="previewSource" :hash="previewContext.hash" :view="previewContext.view" @error="codeError = $event" @ready="codeError = ''" />
         <SquiggleCanvas v-else ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging && !drawMode" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" :draw-mode="drawMode" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="startDrag" @gesture-end="history.commit(); dragging = false" @fit="applyDrawing" @close-draw="closeDraw" @notice="announce" />
@@ -332,6 +352,7 @@ onBeforeUnmount(() => {
             <button class="stage-button" :aria-label="playing ? 'Pause animation' : 'Play animation'" :title="playing ? 'Pause' : 'Play'" :aria-pressed="playing" @click="togglePlayback"><EditorIcon :name="playing ? 'pause' : 'play'" /></button>
             <button class="stage-button" aria-label="Reset squiggle" title="Reset squiggle" @click="reset"><EditorIcon name="reset" /></button>
             <button ref="drawToggle" class="stage-button draw-toggle" aria-label="Draw mode" :title="customRunning ? 'Reset original code to draw' : drawMode ? 'Finish drawing' : 'Draw a squiggle'" :aria-pressed="drawMode" :disabled="customRunning" @click="toggleDraw"><EditorIcon name="draw" /><span>Draw</span></button>
+            <button ref="promptToggle" class="stage-button prompt-toggle" aria-label="Prompt mode" :title="customRunning ? 'Reset original code to use prompts' : promptMode ? 'Hide prompt' : 'Describe a squiggle'" :aria-pressed="promptMode" :disabled="customRunning" aria-controls="prompt-panel" @click="togglePrompt"><EditorIcon name="prompt" /><span>Prompt</span></button>
             <button class="stage-button code-toggle" aria-label="Code mode" :title="codeMode ? 'Hide code' : 'Show code'" :aria-pressed="codeMode" aria-controls="live-code" @click="codeMode = !codeMode"><EditorIcon name="code" /><span>Code</span></button>
           </div>
           <div class="backgrounds" aria-label="Canvas background">
@@ -340,6 +361,7 @@ onBeforeUnmount(() => {
         </div>
       </main>
       <CodePanel v-if="codeMode" id="live-code" ref="codePanel" :lines="codeLines" :highlighted-line-ids="highlightedLineIds" :highlight-revision="highlightRevision" :modified="codeModified" :pending="codePending" :error="codeError" @edit="editCode" @run="runCode" @reset="resetCode" />
+      <PromptPanel v-if="promptMode" id="prompt-panel" v-model="promptDraft" :hash="hash" :edit-revision="promptEditRevision" @apply="applyDrawing" @close="closePrompt" />
     </div>
 
     <div class="toast" role="status" aria-live="polite" :class="{ visible: notice }">{{ notice }}</div>

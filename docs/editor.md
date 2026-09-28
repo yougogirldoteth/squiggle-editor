@@ -43,9 +43,19 @@ Draw pauses animation. **Escape** cancels an unfinished stroke; press it again t
 
 Draw is available with the original renderer, including when the code pane is open. When custom code is running, use **Reset original code** before drawing.
 
+## Prompt mode
+
+Choose **Prompt** in the canvas toolbar, describe a shape, color, texture, or mood, then choose **Generate** or press **Enter**. **Shift Enter** adds a line break. A new prompt starts from the current artwork, so you can refine it with instructions like “make the second peak taller” or “only blue.” **Try again** asks for another interpretation.
+
+Each completed result is one undo step and works with dragging, drawing, code navigation, hash links, and PNG export. Unchanged results do not add an undo entry. **Cancel**, a hash edit, closing Prompt mode, or switching to Draw discards a pending result. **Escape** first cancels a request and then closes the panel. The draft stays available until you reload the page.
+
+The model returns parameters that are validated and encoded into the original hash rules. Shapes, lettering, closed loops, and narrow palettes can only be approximated; a note appears when the palette reaches the script's limits. The source script is unchanged. Prompt mode is unavailable while custom code runs.
+
+Prompts and the current artwork's decoded parameters are sent to OpenAI. They are not saved in the URL or persisted by the app. Prompt mode needs an optional server API key; see [configuration, data handling, and request limits](prompt-mode.md).
+
 ## Hashes and links
 
-The hash bar accepts `0x` followed by 64 hexadecimal characters. Paste a hash and press **Enter** or the load button; the copy button copies the current hash. With code mode open in compact phone or short landscape layouts, the bar is hidden to make room for the editor. The current hash remains available in the page URL.
+The hash bar accepts `0x` followed by 64 hexadecimal characters. Paste a hash and press **Enter** or the load button; the copy button copies the current hash. With code or Prompt mode open in compact phone or short landscape layouts, the bar is hidden to make room for the editor. The current hash remains available in the page URL. On the narrowest canvases, background swatches move out of the toolbar; background remains available in the **View** controls.
 
 The address bar follows these settings:
 

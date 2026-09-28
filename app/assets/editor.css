@@ -91,16 +91,17 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
 .stage { grid-area: stage; position: relative; min-height: 0; min-width: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; isolation: isolate; }
 .custom-sketch-label { position: absolute; top: 12px; right: 12px; padding: 4px 7px; border-radius: 5px; background: #f7f7f1ed; color: #616d56; font-size: 10px; pointer-events: none; }
 .workspace { grid-area: stage; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
-.workspace > .stage { grid-area: auto; }
+.workspace > .stage { grid-area: auto; container: code-artwork / inline-size; }
 .workspace.with-code { grid-template-columns: minmax(0, 1fr) minmax(340px, .85fr); gap: var(--space-4); }
-.workspace.with-code > .stage { container: code-artwork / inline-size; padding-bottom: 60px; }
+.workspace.with-code > .stage { padding-bottom: 60px; }
+.workspace.with-prompt { grid-template-rows: minmax(0, 1fr) auto; row-gap: var(--space-2); }
 .canvas-tools { position: absolute; bottom: var(--space-4); left: var(--space-4); right: var(--space-4); display: flex; align-items: center; justify-content: space-between; pointer-events: none; z-index: 3; }
 .canvas-tools > div { pointer-events: auto; }
 .play-tools { display: flex; gap: var(--space-2); }
 .stage-button { display: grid; place-items: center; width: 36px; height: 36px; background: #f7f7f1ed; border: 1px solid var(--line); border-radius: var(--radius); color: #616d56; }
 .stage-button svg { width: 16px; height: 16px; }
-.code-toggle, .draw-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; width: auto; padding: 0 10px; font-size: 11px; }
-.code-toggle[aria-pressed=true], .draw-toggle[aria-pressed=true] { background: #e7eddc; border-color: #c5d2b8; color: #405632; }
+.code-toggle, .draw-toggle, .prompt-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; width: auto; padding: 0 10px; font-size: 11px; }
+.code-toggle[aria-pressed=true], .draw-toggle[aria-pressed=true], .prompt-toggle[aria-pressed=true] { background: #e7eddc; border-color: #c5d2b8; color: #405632; }
 .backgrounds { display: flex; align-items: center; padding: 1px; background: #f7f7f1ed; border: 1px solid var(--line); border-radius: var(--radius); }
 .backgrounds button { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; }
 .backgrounds button span { width: 16px; height: 16px; border-radius: 50%; border: 1px solid #0002; }
@@ -214,31 +215,39 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
 }
 @media (max-width: 900px) {
   .workspace.with-code { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); }
+  .workspace.with-code.with-prompt { grid-template-rows: minmax(0, 1.2fr) minmax(0, .8fr) auto; }
   .workspace.with-code > .stage { padding-bottom: 52px; }
-  .code-toggle, .draw-toggle { width: 36px; padding: 0; }
-  .code-toggle span, .draw-toggle span { display: none; }
+  .code-toggle, .draw-toggle, .prompt-toggle { width: 36px; padding: 0; }
+  .code-toggle span, .draw-toggle span, .prompt-toggle span { display: none; }
 }
 @media (max-width: 650px) and (min-height: 451px), (max-width: 479px) {
-  .editor.has-code { grid-template-rows: 48px max-content minmax(0, 1fr) 64px; grid-template-areas: 'header' 'controls' 'stage' 'types'; }
-  .has-code .hash-section { display: none; }
+  .editor.has-code, .editor.has-prompt { grid-template-rows: 48px max-content minmax(0, 1fr) 64px; grid-template-areas: 'header' 'controls' 'stage' 'types'; }
+  .has-code .hash-section, .has-prompt .hash-section { display: none; }
 }
 @media (max-height: 650px) and (max-width: 650px) and (min-height: 451px), (max-height: 650px) and (max-width: 479px) {
-  .editor.has-code { grid-template-rows: 44px max-content minmax(0, 1fr) 56px; }
+  .editor.has-code, .editor.has-prompt { grid-template-rows: 44px max-content minmax(0, 1fr) 56px; }
 }
 @media (max-height: 450px) and (min-width: 480px) {
-  .editor.has-code { grid-template-rows: 44px 76px minmax(0, 1fr); grid-template-areas: 'header header' 'types controls' 'types stage'; }
-  .has-code .hash-section { display: none; }
+  .editor.has-code, .editor.has-prompt { grid-template-rows: 44px 76px minmax(0, 1fr); grid-template-areas: 'header header' 'types controls' 'types stage'; }
+  .has-code .hash-section, .has-prompt .hash-section { display: none; }
   .workspace.with-code { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .workspace.with-code.with-prompt { grid-template-rows: minmax(0, 1fr) auto; }
 }
 @media (max-height: 450px) and (min-width: 480px) and (max-width: 650px) {
-  .editor.has-code { grid-template-rows: 36px 76px minmax(0, 1fr); }
+  .editor.has-code, .editor.has-prompt { grid-template-rows: 36px 76px minmax(0, 1fr); }
 }
 @media (max-width: 380px) {
   .play-tools { gap: var(--space-1); }
 }
-@container code-artwork (max-width: 420px) {
-  .code-toggle, .draw-toggle { width: 36px; padding: 0; }
-  .code-toggle span, .draw-toggle span { display: none; }
+@container code-artwork (max-width: 520px) {
+  .code-toggle, .draw-toggle, .prompt-toggle { width: 36px; padding: 0; }
+  .code-toggle span, .draw-toggle span, .prompt-toggle span { display: none; }
+}
+@container code-artwork (max-width: 360px) {
+  .play-tools { gap: var(--space-1); }
+  .stage-button { width: 32px; }
+  .backgrounds button { width: 24px; }
+  .canvas-tools { left: var(--space-2); right: var(--space-2); }
 }
 @container code-artwork (max-width: 280px) {
   .backgrounds { display: none; }
@@ -248,5 +257,10 @@ h1 span { font-weight: 400; color: var(--muted); margin-left: 3px; }
   .play-tools { gap: var(--space-1); }
   .stage-button { width: 30px; flex-shrink: 0; }
   .stage-button span { display: none; }
+}
+@container code-artwork (max-width: 200px) {
+  .canvas-tools { left: 6px; right: 6px; }
+  .play-tools { gap: 2px; }
+  .stage-button { width: 26px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

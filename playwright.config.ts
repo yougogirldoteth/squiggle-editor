@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: 'list',
   outputDir: './test-results',
   use: {
-    baseURL: 'http://127.0.0.1:3021',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3021',
     browserName: 'chromium',
     channel: 'chrome',
     headless: true,

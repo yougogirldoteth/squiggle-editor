@@ -7,6 +7,7 @@ Explore the Chromie Squiggle algorithm by Snowfro: pull the curve, change its co
 - Six styles: Normal, Bold, Slinky, Ribbed, Pipe, and Fuzzy.
 - Mouse, touch, and keyboard editing, with undo and redo.
 - Draw a line and fit it to a valid Squiggle hash, entirely in your browser.
+- Prompt a shape, palette, or mood, then refine the resulting hash (optional OpenAI API key).
 - Hash-based artwork editing, shareable URLs, and PNG export.
 - Editable code mode with syntax highlighting and live navigation to affected expressions.
 
@@ -14,7 +15,7 @@ An independent project by **ygg**, built with Nuxt, Vue, and Canvas. No account,
 
 ## Run locally
 
-Use Node.js **24.14.0** (see [`.nvmrc`](.nvmrc)) and npm. No environment variables or credentials are needed.
+Use Node.js **24.14.0** (see [`.nvmrc`](.nvmrc)) and npm. The editor runs without credentials. Prompt mode optionally uses a private OpenAI API key; see [setup and limits](docs/prompt-mode.md).
 
 ```sh
 npm ci
@@ -28,6 +29,8 @@ Open [localhost:3021](http://localhost:3021). If you use nvm, run `nvm use` firs
 **Controls and dragging** edit a 32-byte hash using the original algorithm's rules. Copy the hash or the page URL to return to the artwork. The standard renderer exports a 3000 × 2000 PNG.
 
 **Draw** fits a line drawn with a mouse, finger, or pen to the same hash rules. Release to fit, then keep drawing or turn Draw off to adjust the result. Loops are approximated: the original curve always moves left to right.
+
+**Prompt** turns a description into a valid hash using the original shape, color, and texture rules. Generate, refine with another prompt, or keep editing with the controls. Prompts and the current artwork parameters are sent to OpenAI. Results remain approximations within the algorithm's limits.
 
 **Code mode** shows a formatting-only copy of the verified on-chain script. Changing a control highlights the relevant expressions without rewriting that source. Edit the script and press **Run** or **⌘/Ctrl Enter** to preview custom code with p5.js 1.0.0. **Reset original code** returns to the standard renderer.
 
