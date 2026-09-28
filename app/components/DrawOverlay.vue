@@ -118,12 +118,21 @@ onMounted(() => {
   if (host.value) observer.observe(host.value)
   window.addEventListener('blur', cancel)
   window.addEventListener('pointerdown', outside, true)
+  // Dia can lose capture before pointerup, leaving the release targeted at
+  // the page outside the canvas. Follow the active pointer until its release;
+  // capture loss alone must not discard a completed drawing.
+  window.addEventListener('pointermove', move, true)
+  window.addEventListener('pointerup', finish, true)
+  window.addEventListener('pointercancel', interrupted, true)
 })
 onBeforeUnmount(() => {
   cancel()
   observer?.disconnect()
   window.removeEventListener('blur', cancel)
   window.removeEventListener('pointerdown', outside, true)
+  window.removeEventListener('pointermove', move, true)
+  window.removeEventListener('pointerup', finish, true)
+  window.removeEventListener('pointercancel', interrupted, true)
 })
 </script>
 
@@ -132,8 +141,7 @@ onBeforeUnmount(() => {
     ref="host" class="draw-overlay" :class="{ 'is-fitted': fitted, 'is-drawing': drawing }"
     :style="{ '--draw-paper': background, '--draw-ink': background === '#000000' || Number.parseInt(background.slice(1, 3), 16) < 125 ? '#ffffff' : '#394431' }"
     role="application" aria-label="Draw a squiggle" :aria-describedby="instructionsId" tabindex="0"
-    @pointerdown="start" @pointermove="move" @pointerup="finish"
-    @pointercancel="interrupted" @lostpointercapture="interrupted" @contextmenu.prevent @keydown="keydown"
+    @pointerdown="start" @contextmenu.prevent @keydown="keydown"
   >
     <div class="draw-paper" />
     <svg aria-hidden="true" class="draw-lines">

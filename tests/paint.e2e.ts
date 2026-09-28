@@ -104,22 +104,12 @@ test('each drawing is a separate edit and undo first cancels an unfinished strok
   await expect(hashInput(page)).toHaveValue(DEFAULT_HASH)
 })
 
-test('resize, blur, lost capture and changes to controls discard unfinished strokes', async ({ page }) => {
+test('resize, blur and changes to controls discard unfinished strokes', async ({ page }) => {
   await drawButton(page).click()
-  for (const interruption of ['resize', 'blur', 'capture', 'control']) {
-    if (interruption === 'capture') await surface(page).evaluate(element => {
-      element.addEventListener('pointerdown', event => {
-        element.setAttribute('data-test-pointer', String((event as PointerEvent).pointerId))
-      }, { once: true })
-    })
+  for (const interruption of ['resize', 'blur', 'control']) {
     await startStroke(page)
     if (interruption === 'resize') await page.setViewportSize({ width: 1250, height: 780 })
     if (interruption === 'blur') await page.evaluate(() => window.dispatchEvent(new Event('blur')))
-    if (interruption === 'capture') await surface(page).evaluate(element => {
-      const id = Number(element.getAttribute('data-test-pointer'))
-      if (!element.hasPointerCapture(id)) throw new Error('The drawing did not capture its pointer')
-      element.releasePointerCapture(id)
-    })
     if (interruption === 'control') {
       await page.getByRole('slider', { name: 'Starting hue' }).focus()
       await page.keyboard.press('ArrowRight')
@@ -143,6 +133,44 @@ test('pointer capture finishes a stroke outside the canvas and a new stroke stil
   await startStroke(page, 2)
   await page.mouse.up()
   await expect(hashInput(page)).not.toHaveValue(first)
+})
+
+test('a desktop release outside the canvas still fits when capture is lost first', async ({ page }) => {
+  await drawButton(page).click()
+  await surface(page).evaluate(element => {
+    element.addEventListener('pointerdown', event => {
+      element.setAttribute('data-test-pointer', String((event as PointerEvent).pointerId))
+    }, { once: true })
+    element.addEventListener('lostpointercapture', () => element.setAttribute('data-test-lost', 'true'), { once: true })
+    window.addEventListener('pointerup', event => {
+      element.setAttribute('data-test-outside-release', String(!event.composedPath().includes(element)))
+    }, { once: true, capture: true })
+  })
+  await startStroke(page)
+  const rect = (await surface(page).boundingBox())!
+  await page.mouse.move(rect.x + rect.width + 3, rect.y + rect.height / 2)
+  // Dia can drop capture immediately before delivering the trackpad release
+  // to the page outside the canvas. Reproduce that native event ordering.
+  await surface(page).evaluate(element => {
+    const id = Number(element.getAttribute('data-test-pointer'))
+    if (!element.hasPointerCapture(id)) throw new Error('The drawing did not capture its pointer')
+    element.releasePointerCapture(id)
+  })
+  await page.mouse.up()
+  await expect(surface(page)).toHaveAttribute('data-test-lost', 'true')
+  await expect(surface(page)).toHaveAttribute('data-test-outside-release', 'true')
+  await expect(hashInput(page)).not.toHaveValue(DEFAULT_HASH)
+  await expect(surface(page)).toHaveClass(/is-fitted/)
+  await expect(page.locator('.draw-stroke')).toHaveCount(0)
+  const fitted = await hashInput(page).inputValue()
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(hashInput(page)).toHaveValue(DEFAULT_HASH)
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  await expect(hashInput(page)).toHaveValue(fitted)
+  await startStroke(page, 2)
+  await page.mouse.up()
+  await expect(hashInput(page)).not.toHaveValue(fitted)
 })
 
 test('Draw works with the original code pane, but is disabled for a custom running script', async ({ page }) => {
