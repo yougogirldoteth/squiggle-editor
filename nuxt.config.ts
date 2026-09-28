@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   runtimeConfig: {
     openaiApiKey: '',
-    promptModel: 'gpt-6-luna',
+    promptModel: 'gpt-6-sol',
   },
   modules: ['nuxt-og-image'],
   site: { url: 'https://squiggle.worldcomputer.art' },

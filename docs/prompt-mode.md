@@ -6,7 +6,9 @@ Prompt mode uses the OpenAI Responses API to suggest shape, color, and texture p
 
 Copy `.env.example` to `.env`, then set `NUXT_OPENAI_API_KEY` to a project API key. Restart the development server after editing it. The key is private Nuxt runtime configuration; `.env` is ignored by Git and excluded from Docker builds.
 
-`NUXT_PROMPT_MODEL` defaults to `gpt-6-luna`. The request uses structured output, no reasoning tokens, a 1,000-token output limit per attempt, and a 20-second total timeout. A valid result that encodes to the unchanged hash gets one correction attempt with that feedback. Provider errors, refusals, and malformed responses are never retried. A model override must support the same Responses API options and JSON schema.
+`NUXT_PROMPT_MODEL` defaults to `gpt-6-sol` with low reasoning effort. The request uses structured output, a 1,000-token output limit per attempt (including reasoning), and a 20-second total timeout. A valid result that encodes to the unchanged hash gets one correction attempt with that feedback. Provider errors, refusals, and malformed responses are never retried. A model override must support the same Responses API options and JSON schema.
+
+Sol was selected after comparing rendered results and exact parameter preservation with Luna on subjects, narrow palettes, individual peak edits, mirroring, and texture controls. It costs more per token; `gpt-6-luna` remains an optional cheaper override, with less consistent results in these checks. Model outputs are variable, so schema validity and a changed hash alone do not establish that a request was followed.
 
 All other editor features work without a key. Prompt requests return an unavailable message when no key is configured.
 

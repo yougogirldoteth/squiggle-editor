@@ -11,7 +11,7 @@ const recipe = { shape: null, style: null, texture: null, color: { startHue: 210
 const completion = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ edit: { intent: 'refinement', ...recipe } }) }] }] }
 const unchangedCompletion = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ edit: { intent: 'refinement', shape: null, style: null, color: null, texture: null } }) }] }] }
 const input = { prompt: 'Make it blue', hash: DEFAULT_HASH }
-const config = { apiKey: 'test-key', model: 'gpt-6-luna' }
+const config = { apiKey: 'test-key', model: 'gpt-6-sol' }
 
 describe('prompt provider boundary', () => {
   it('validates and normalizes requests without accepting model or code overrides', () => {
@@ -23,7 +23,7 @@ describe('prompt provider boundary', () => {
 
   it('uses a bounded structured request with no tools, storage, or executable output', () => {
     const body = promptRequestBody(input.prompt, input.hash, config.model)
-    expect(body).toMatchObject({ model: 'gpt-6-luna', store: false, max_output_tokens: 1000, reasoning: { effort: 'none' }, text: { format: { type: 'json_schema', strict: true } } })
+    expect(body).toMatchObject({ model: 'gpt-6-sol', store: false, max_output_tokens: 1000, reasoning: { effort: 'low' }, text: { format: { type: 'json_schema', strict: true } } })
     expect(body).not.toHaveProperty('tools')
     expect(body.input[0]!.content).toContain(input.prompt)
     expect(body.input[0]!.content).toContain('Current artwork:')
