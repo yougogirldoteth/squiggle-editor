@@ -47,7 +47,7 @@ Draw is available with the original renderer, including when the code pane is op
 
 Choose **Prompt** in the canvas toolbar, describe a shape, color, texture, or mood, then choose **Generate** or press **Enter**. **Shift Enter** adds a line break. A new prompt starts from the current artwork, so you can refine it with instructions like “make the second peak taller” or “only blue.” **Try again** asks for another interpretation.
 
-Each completed result is one undo step and works with dragging, drawing, code navigation, hash links, and PNG export. Unchanged results do not add an undo entry. **Cancel**, a hash edit, closing Prompt mode, or switching to Draw discards a pending result. **Escape** first cancels a request and then closes the panel. The draft stays available until you reload the page.
+Each completed result is one undo step and works with dragging, drawing, code navigation, hash links, and PNG export. If a result is unchanged, Prompt mode makes one correction attempt before returning it. Unchanged results do not add an undo entry and are not treated as proof that the prompt already matches. **Cancel**, a hash edit, closing Prompt mode, or switching to Draw discards a pending result. **Escape** first cancels a request and then closes the panel. The draft stays available until you reload the page.
 
 The model returns parameters that are validated and encoded into the original hash rules. Shapes, lettering, closed loops, and narrow palettes can only be approximated; a note appears when the palette reaches the script's limits. The source script is unchanged. Prompt mode is unavailable while custom code runs.
 

@@ -48,7 +48,7 @@ async function generate() {
     busy.value = false
     lastPrompt.value = prompt
     action.value?.focus({ preventScroll: true })
-    message.value = nextHash === baseHash ? 'Already matches. Try a more specific prompt.'
+    message.value = nextHash === baseHash ? 'No different fit found. Try another shape or style.'
       : result.colorLimited ? 'Closest palette the original script allows. Keep refining or edit the controls.'
         : 'Keep refining, or adjust it with the controls.'
     emit('apply', nextHash)

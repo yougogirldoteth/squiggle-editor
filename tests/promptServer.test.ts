@@ -3,11 +3,13 @@ import { createServer, request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createApp, eventHandler, toNodeListener } from 'h3'
 import { DEFAULT_HASH, parseHash } from '../app/utils/squiggle'
+import { describePromptHash } from '../app/utils/promptRecipe'
 import { createPromptLimiter, generatePrompt, parsePromptInput, parsePromptResponse, promptRequestBody } from '../server/utils/prompt'
 import { createPromptHandler } from '../server/utils/promptHandler'
 
 const recipe = { shape: null, style: null, texture: null, color: { startHue: 210, hueSpan: 60, reverse: false, hyper: null } }
 const completion = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ edit: { intent: 'refinement', ...recipe } }) }] }] }
+const unchangedCompletion = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ edit: { intent: 'refinement', shape: null, style: null, color: null, texture: null } }) }] }] }
 const input = { prompt: 'Make it blue', hash: DEFAULT_HASH }
 const config = { apiKey: 'test-key', model: 'gpt-6-luna' }
 
@@ -61,7 +63,78 @@ describe('prompt provider boundary', () => {
     expect(() => parsePromptResponse(value, DEFAULT_HASH)).toThrow()
   })
 
-  it('sanitizes upstream errors and never automatically retries', async () => {
+  it('corrects an unchanged result once, using the same current artwork and deadline', async () => {
+    const request = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(unchangedCompletion))
+      .mockResolvedValueOnce(Response.json(completion))
+    const result = await generatePrompt(input, config, undefined, request)
+    expect(result.hash).not.toBe(input.hash)
+    expect(request).toHaveBeenCalledTimes(2)
+    const first = JSON.parse(request.mock.calls[0]![1]!.body as string)
+    const second = JSON.parse(request.mock.calls[1]![1]!.body as string)
+    expect(first.instructions).not.toContain('VALIDATION FEEDBACK')
+    expect(second.instructions).toContain('VALIDATION FEEDBACK')
+    expect(second.input).toEqual(first.input)
+    expect(request.mock.calls[1]![1]!.signal).toBe(request.mock.calls[0]![1]!.signal)
+  })
+
+  it('also detects copied controls that round back to the same hash, and stops after two attempts', async () => {
+    const recipe = describePromptHash(DEFAULT_HASH)
+    recipe.shape.points = recipe.shape.points.map(point => Math.min(1, point + 0.0001))
+    const copied = { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ edit: { intent: 'refinement', ...recipe } }) }] }] }
+    const request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(copied))
+    expect((await generatePrompt(input, config, undefined, request)).hash).toBe(input.hash)
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('charges and releases every provider attempt through the same limiter', async () => {
+    const acquire = createPromptLimiter({ daily: 2, concurrent: 1 })
+    const request = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(unchangedCompletion))
+      .mockResolvedValueOnce(Response.json(completion))
+    const result = await generatePrompt(input, config, undefined, request, () => acquire('test'))
+    expect(result.hash).not.toBe(input.hash)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(() => acquire('test')).toThrow('daily limit')
+  })
+
+  it('does not bypass a spent budget or cancellation when attempting a correction', async () => {
+    const acquire = createPromptLimiter({ daily: 1 })
+    const request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(unchangedCompletion))
+    await expect(generatePrompt(input, config, undefined, request, () => acquire('test'))).rejects.toMatchObject({ statusCode: 429 })
+    expect(request).toHaveBeenCalledTimes(1)
+    const controller = new AbortController()
+    request.mockClear()
+    await expect(generatePrompt(input, config, controller.signal, request, () => () => controller.abort())).rejects.toMatchObject({ statusCode: 499 })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('aborts an in-flight correction and releases both provider slots', async () => {
+    const controller = new AbortController()
+    const release = vi.fn()
+    const request = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(unchangedCompletion))
+      .mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+        options!.signal!.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })
+      }))
+    const pending = generatePrompt(input, config, controller.signal, request, () => release)
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ statusCode: 499 })
+    expect(release).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases the attempt slot on provider failure and does not retry it', async () => {
+    const release = vi.fn()
+    const acquire = vi.fn(() => release)
+    const request = vi.fn<typeof fetch>().mockRejectedValue(new Error('network failure'))
+    await expect(generatePrompt(input, config, undefined, request, acquire)).rejects.toMatchObject({ statusCode: 502 })
+    expect(acquire).toHaveBeenCalledTimes(1)
+    expect(release).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('sanitizes upstream errors and never retries failures', async () => {
     for (const response of [new Response('secret upstream text', { status: 401 }), new Response('secret upstream text', { status: 429 }), new Response('not JSON'), new Response('x'.repeat(65537))]) {
       const request = vi.fn<typeof fetch>().mockResolvedValue(response)
       await expect(generatePrompt(input, config, undefined, request)).rejects.toThrow(/^Prompt mode is unavailable|^The prompt/)
@@ -165,6 +238,17 @@ describe('prompt HTTP handler', () => {
     expect(response.status).toBe(429)
     expect(response.headers.get('retry-after')).toBe('60')
     expect(request).toHaveBeenCalledTimes(4)
+  })
+
+  it('counts corrections against the HTTP caller’s provider-attempt limit', async () => {
+    const provider = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(unchangedCompletion))
+    const { send } = await start('test-key', provider)
+    expect((await send()).status).toBe(200)
+    expect((await send()).status).toBe(200)
+    const limited = await send()
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('retry-after')).toBe('60')
+    expect(provider).toHaveBeenCalledTimes(4)
   })
 
   it('cancels the upstream call when the browser disconnects', async () => {

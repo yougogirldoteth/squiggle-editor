@@ -36,7 +36,6 @@ function readPromptBody(event: H3Event): Promise<unknown> {
 export function createPromptHandler(request: typeof fetch = fetch, acquire = createPromptLimiter()) {
   return async (event: H3Event, config: { apiKey: string; model: string }) => {
     setResponseHeaders(event, { 'cache-control': 'no-store' })
-    let release: (() => void) | undefined
     const controller = new AbortController()
     const disconnect = () => { if (!event.node.res.writableEnded) controller.abort() }
     try {
@@ -49,16 +48,15 @@ export function createPromptHandler(request: typeof fetch = fetch, acquire = cre
       const input = parsePromptInput(await readPromptBody(event))
       // Never trust caller-supplied X-Forwarded-For for the per-address limit.
       // Behind a proxy this is a conservative shared limit until configured otherwise.
-      release = acquire(getRequestIP(event) ?? 'unknown')
+      const address = getRequestIP(event) ?? 'unknown'
       event.node.res.once('close', disconnect)
-      return await generatePrompt(input, config, controller.signal, request)
+      return await generatePrompt(input, config, controller.signal, request, () => acquire(address))
     } catch (error) {
       const safe = error instanceof PromptError ? error : new PromptError(500, 'Prompt mode is unavailable right now.')
       if (safe.retryAfter) setResponseHeaders(event, { 'retry-after': safe.retryAfter })
       throw createError({ statusCode: safe.statusCode, statusMessage: safe.message })
     } finally {
       event.node.res.off('close', disconnect)
-      release?.()
     }
   }
 }

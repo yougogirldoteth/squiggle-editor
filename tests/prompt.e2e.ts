@@ -184,7 +184,7 @@ test('errors, invalid hashes and unchanged results preserve the artwork and hist
     await expect(hash(page)).toHaveValue(DEFAULT_HASH)
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled()
   }
-  await expect(status(page)).toContainText('Already matches')
+  await expect(status(page)).toContainText('No different fit found')
 })
 
 test('preserves button focus for Escape and ignores IME candidate keys', async ({ page }) => {
