@@ -39,6 +39,8 @@ The production preview uses port 3021 too. Stop the development server before ru
 | --- | --- |
 | `app/app.vue` | Editor state, controls, hash history, and URL state. |
 | `app/components/SquiggleCanvas.vue` | Native canvas lifecycle, pointer and keyboard editing, and standard PNG export. |
+| `app/components/DrawOverlay.vue` | Drawing gestures, cancellation, and the temporary comparison guide. |
+| `app/utils/fitStroke.ts` | Local stroke fitting within the original hash constraints. |
 | `app/utils/squiggle.ts` | Hash decoding, constrained edits, and the native rendering adaptation. |
 | `app/components/CodePanel.vue` | CodeMirror editing, highlighting, and navigation. |
 | `app/utils/liveSketch.ts` | Original source display and mapping edits to relevant expressions. |

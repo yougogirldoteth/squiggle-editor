@@ -35,6 +35,8 @@ const hashDraft = ref(DEFAULT_HASH)
 const hashError = ref('')
 const playing = ref(false)
 const dragging = ref(false)
+const drawMode = ref(false)
+const drawToggle = ref<HTMLButtonElement>()
 const codeMode = ref(false)
 const background = ref('#ffffff')
 const grayLevels = [255, 225, 200, 175, 150, 125, 100, 75, 50, 25, 0]
@@ -85,6 +87,7 @@ function editCode(source: string) {
   highlightedLineIds.value = []
 }
 function runCode() {
+  drawMode.value = false
   clearTimeout(previewTimer)
   codeError.value = ''
   const source = codeDraft.value
@@ -173,6 +176,23 @@ function tabKey(event: KeyboardEvent, index: number) {
   document.getElementById(`tab-${tabs[next]}`)?.focus()
 }
 function chooseType(type: SquiggleType) { update(setType(hash.value, type), true) }
+function toggleDraw() {
+  history.commit()
+  drawMode.value = !drawMode.value
+  if (drawMode.value) playing.value = false
+}
+function closeDraw() {
+  drawMode.value = false
+  nextTick(() => drawToggle.value?.focus({ preventScroll: true }))
+}
+function togglePlayback() {
+  drawMode.value = false
+  playing.value = !playing.value
+}
+function applyDrawing(value: string) {
+  history.commit()
+  update(value, true)
+}
 function undo() { sync(history.undo()) }
 function redo() { sync(history.redo()) }
 function randomize() { update(randomHash(), true) }
@@ -296,19 +316,20 @@ onBeforeUnmount(() => {
       <div v-show="activeTab === 'View'" id="panel-View" class="tab-controls view-controls" role="tabpanel" aria-labelledby="tab-View">
         <EditorRange id="speed" label="Speed" :min="0.1" :max="20" :step="0.1" :value="speed" :display="`${speed.toFixed(1)}×`" @change="speed = $event" />
         <EditorRange id="background" label="Background" :max="10" :value="backgroundIndex" :display="backgroundIndex === 0 ? 'White' : backgroundIndex === 10 ? 'Black' : `${Math.round(grayLevels[backgroundIndex]! / 255 * 100)}%`" grayscale @change="background = backgrounds[$event]!" />
-        <button class="toggle-button view-play" :aria-pressed="playing" @click="playing = !playing"><EditorIcon :name="playing ? 'pause' : 'play'" />{{ playing ? 'Pause' : 'Play' }}</button>
+        <button class="toggle-button view-play" :aria-pressed="playing" @click="togglePlayback"><EditorIcon :name="playing ? 'pause' : 'play'" />{{ playing ? 'Pause' : 'Play' }}</button>
       </div>
     </section>
 
     <div class="workspace" :class="{ 'with-code': codeMode }">
       <main class="stage" :style="{ background }">
         <ScriptPreview v-if="customRunning" :key="previewRevision" ref="scriptPreview" :source="previewSource" :hash="previewContext.hash" :view="previewContext.view" @error="codeError = $event" @ready="codeError = ''" />
-        <SquiggleCanvas v-else ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="startDrag" @gesture-end="history.commit(); dragging = false" />
+        <SquiggleCanvas v-else ref="canvas" :hash="hash" :background="background" :playing="playing && !dragging && !drawMode" :speed="speed" :selected-point="selectedPoint" :show-points="activeTab === 'Shape'" :draw-mode="drawMode" @select-point="selectedPoint = $event" @update:hash="update($event)" @gesture-start="startDrag" @gesture-end="history.commit(); dragging = false" @fit="applyDrawing" @close-draw="closeDraw" @notice="announce" />
         <span v-if="customRunning" class="custom-sketch-label">Custom code</span>
         <div class="canvas-tools">
           <div class="play-tools">
-            <button class="stage-button" :aria-label="playing ? 'Pause animation' : 'Play animation'" :title="playing ? 'Pause' : 'Play'" :aria-pressed="playing" @click="playing = !playing"><EditorIcon :name="playing ? 'pause' : 'play'" /></button>
+            <button class="stage-button" :aria-label="playing ? 'Pause animation' : 'Play animation'" :title="playing ? 'Pause' : 'Play'" :aria-pressed="playing" @click="togglePlayback"><EditorIcon :name="playing ? 'pause' : 'play'" /></button>
             <button class="stage-button" aria-label="Reset squiggle" title="Reset squiggle" @click="reset"><EditorIcon name="reset" /></button>
+            <button ref="drawToggle" class="stage-button draw-toggle" aria-label="Draw mode" :title="customRunning ? 'Reset original code to draw' : drawMode ? 'Finish drawing' : 'Draw a squiggle'" :aria-pressed="drawMode" :disabled="customRunning" @click="toggleDraw"><EditorIcon name="draw" /><span>Draw</span></button>
             <button class="stage-button code-toggle" aria-label="Code mode" :title="codeMode ? 'Hide code' : 'Show code'" :aria-pressed="codeMode" aria-controls="live-code" @click="codeMode = !codeMode"><EditorIcon name="code" /><span>Code</span></button>
           </div>
           <div class="backgrounds" aria-label="Canvas background">

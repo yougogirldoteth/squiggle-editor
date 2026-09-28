@@ -9,13 +9,17 @@ const props = withDefaults(defineProps<{
   speed?: number
   selectedPoint?: number
   showPoints?: boolean
-}>(), { speed: 1, showPoints: false })
+  drawMode?: boolean
+}>(), { speed: 1, showPoints: false, drawMode: false })
 
 const emit = defineEmits<{
   'update:hash': [hash: string]
   'gesture-start': []
   'gesture-end': []
   'select-point': [index: number]
+  'fit': [hash: string]
+  'close-draw': []
+  'notice': [message: string]
 }>()
 
 const host = ref<HTMLDivElement>()
@@ -36,7 +40,7 @@ const geometry = computed(() => width.value > 0 && height.value > 0
   : null)
 const controls = computed(() => geometry.value?.controls ?? [])
 const selection = computed(() => controls.value[Math.min(selectedControl.value, controls.value.length - 1)])
-const showGuides = computed(() => !guidesDismissed.value && (props.showPoints || hovered.value || focused.value || dragging.value))
+const showGuides = computed(() => !props.drawMode && !guidesDismissed.value && (props.showPoints || hovered.value || focused.value || dragging.value))
 const selectionAnnouncement = computed(() => {
   if (!focused.value || !selection.value) return ''
   return `Point ${selectedControl.value + 1} of ${controls.value.length}, value ${decodeHash(renderHash.value).bytes[selection.value.byteIndex]}.`
@@ -140,6 +144,7 @@ function eventPoint(event: PointerEvent) {
 }
 
 function onPointerDown(event: PointerEvent) {
+  if (props.drawMode) return
   if (!event.isPrimary || event.button !== 0 || pointerGesture || !canvas.value || !geometry.value) return
   guidesDismissed.value = false
   keyboardFocused.value = false
@@ -175,6 +180,7 @@ function onPointerDown(event: PointerEvent) {
 }
 
 function onPointerMove(event: PointerEvent) {
+  if (props.drawMode) return
   if (pointerGesture) {
     if (event.pointerId !== pointerGesture.pointerId) return
     event.preventDefault()
@@ -362,6 +368,13 @@ function exportPng() {
   }, 'image/png')
 }
 
+watch(() => props.drawMode, () => {
+  finishPointerGesture()
+  finishKeyboardGesture()
+  guidesDismissed.value = true
+  hovered.value = false
+  pendingHover = null
+})
 watch(() => props.hash, (hash) => {
   if (hash === renderHash.value) return
   renderHash.value = hash
@@ -411,7 +424,8 @@ defineExpose({ exportPng, resetPhase })
     <canvas
       ref="canvas"
       class="squiggle-canvas__art"
-      tabindex="0"
+      :tabindex="drawMode ? -1 : 0"
+      :inert="drawMode || undefined"
       role="application"
       aria-label="Squiggle canvas"
       :aria-describedby="instructionsId"
@@ -440,6 +454,7 @@ defineExpose({ exportPng, resetPhase })
     </svg>
     <p :id="instructionsId" class="squiggle-canvas__sr-only">Drag the curve up or down. Control points stay evenly spaced. Use Left and Right to select a point, then Up and Down to move it. Hold Shift for larger changes. Escape cancels a drag.</p>
     <span class="squiggle-canvas__sr-only" aria-live="polite" aria-atomic="true">{{ selectionAnnouncement }}</span>
+    <DrawOverlay v-if="drawMode" :hash="hash" :background="background" @fit="emit('fit', $event)" @close="emit('close-draw')" @notice="emit('notice', $event)" />
   </div>
 </template>
 

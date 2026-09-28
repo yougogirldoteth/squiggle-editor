@@ -15,6 +15,7 @@ const paths: Record<string, string> = {
   check: 'm4 12 5 5L20 6',
   arrow: 'M4 12h16m-6-6 6 6-6 6',
   code: 'm8 6-6 6 6 6m8-12 6 6-6 6m-3-14-2 16',
+  draw: 'm15 5 4 4M4 20l5-1L21 7a2.8 2.8 0 0 0-4-4L5 15l-1 5',
 }
 </script>
 <template><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="paths[name] || paths.spark" /></svg></template>

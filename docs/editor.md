@@ -29,7 +29,19 @@ Grab the curve and pull vertically, or select a visible point and drag it. Point
 | Redo an artwork edit | ⌘/Ctrl Shift Z |
 | Run the code editor's draft | ⌘/Ctrl Enter |
 
-A completed drag is one undo step. Inside the code editor, undo and redo apply to the text instead. Play/Pause, background, and speed are view settings rather than hash-history entries.
+A completed drag or drawing is one undo step. Inside the code editor, undo and redo apply to the text instead. Play/Pause, background, and speed are view settings rather than hash-history entries.
+
+## Draw mode
+
+Choose **Draw** in the canvas toolbar, then draw one continuous line with a mouse, finger, or pen. Release to fit it to a valid hash. The drawing briefly appears as a dotted guide over the result. Draw another line to replace it, or turn Draw off to resume pulling individual points.
+
+The fitter searches the original script's control-point counts and height range. It scales and centers your line into the artwork area, preserving its proportions until it reaches the script's height limit. The original curve has evenly spaced horizontal controls and cannot double back: loops, vertical sections, and fine details are approximated. There is no guarantee of an exact match or a globally optimal hash.
+
+Color and type settings are retained. Changing the length can change how far the color sequence progresses, and changing the geometry also changes Fuzzy's random seed. The fit only changes geometry bytes; it does not modify the original script or mint a token. Drawing and fitting happen locally, without uploading your stroke.
+
+Draw pauses animation. **Escape** cancels an unfinished stroke; press it again to leave Draw. Undo during a stroke cancels just that stroke. Taps, browser-interrupted touches, resizing, and changes to the hash discard unfinished drawings. Completed results work with the existing hash links, controls, code highlighting, export, and undo/redo. Raw strokes are not saved in links or included in exports.
+
+Draw is available with the original renderer, including when the code pane is open. When custom code is running, use **Reset original code** before drawing.
 
 ## Hashes and links
 
