@@ -1,6 +1,10 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-09-25',
   devtools: { enabled: false },
+  runtimeConfig: {
+    openaiApiKey: '',
+    promptModel: 'gpt-6-luna',
+  },
   modules: ['nuxt-og-image'],
   site: { url: 'https://squiggle.worldcomputer.art' },
   ogImage: { defaults: { width: 1200, height: 630 } },
