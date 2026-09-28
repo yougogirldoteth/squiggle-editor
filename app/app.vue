@@ -2,6 +2,9 @@
 import { socialPreviewInputs } from '~/utils/socialPreview'
 import EditorRange from '~/components/EditorRange.vue'
 import HashInput from '~/components/HashInput.vue'
+// Keep the preview shell synchronous: Run followed immediately by Reset must
+// not leave an unresolved async branch inside Nuxt's Suspense boundary.
+import ScriptPreview from '~/components/ScriptPreview.vue'
 import { createLiveSketch, sketchLines, isOriginalSketch, affectedScriptLines, pointScriptLines } from '~/utils/liveSketch'
 import { DEFAULT_HASH, TYPES, decodeHash, parseHash, toHash, setByte, setType, randomHash, visibleStartHue, setStartingHue } from '~/utils/squiggle'
 import type { SquiggleType } from '~/utils/squiggle'
@@ -24,7 +27,6 @@ defineOgImage('Artwork', {
 }, { alt: 'Chromie Squiggle by Snowfro', cacheKey: `artwork-v1-${social.hash}-${social.background}` })
 
 const CodePanel = defineAsyncComponent(() => import('~/components/CodePanel.vue'))
-const ScriptPreview = defineAsyncComponent(() => import('~/components/ScriptPreview.vue'))
 
 const history = reactive(new HashHistory(DEFAULT_HASH))
 const hash = ref(DEFAULT_HASH)

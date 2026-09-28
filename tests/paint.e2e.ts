@@ -107,11 +107,18 @@ test('each drawing is a separate edit and undo first cancels an unfinished strok
 test('resize, blur, lost capture and changes to controls discard unfinished strokes', async ({ page }) => {
   await drawButton(page).click()
   for (const interruption of ['resize', 'blur', 'capture', 'control']) {
+    if (interruption === 'capture') await surface(page).evaluate(element => {
+      element.addEventListener('pointerdown', event => {
+        element.setAttribute('data-test-pointer', String((event as PointerEvent).pointerId))
+      }, { once: true })
+    })
     await startStroke(page)
     if (interruption === 'resize') await page.setViewportSize({ width: 1250, height: 780 })
     if (interruption === 'blur') await page.evaluate(() => window.dispatchEvent(new Event('blur')))
     if (interruption === 'capture') await surface(page).evaluate(element => {
-      for (let id = 1; id < 10; id++) if (element.hasPointerCapture(id)) element.releasePointerCapture(id)
+      const id = Number(element.getAttribute('data-test-pointer'))
+      if (!element.hasPointerCapture(id)) throw new Error('The drawing did not capture its pointer')
+      element.releasePointerCapture(id)
     })
     if (interruption === 'control') {
       await page.getByRole('slider', { name: 'Starting hue' }).focus()
@@ -139,6 +146,8 @@ test('pointer capture finishes a stroke outside the canvas and a new stroke stil
 })
 
 test('Draw works with the original code pane, but is disabled for a custom running script', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
   await page.getByRole('button', { name: 'Code mode' }).click()
   const code = page.locator('.cm-content')
   await expect(code).toBeVisible()
@@ -146,12 +155,21 @@ test('Draw works with the original code pane, but is disabled for a custom runni
   await startStroke(page)
   await page.mouse.up()
   await expect(hashInput(page)).not.toHaveValue(DEFAULT_HASH)
+  // Reset must work even before a first-use preview module has downloaded.
+  // Delay new app chunks to exercise the transition on a real slow connection.
+  await page.route('**/_nuxt/**', async route => {
+    await new Promise(resolve => setTimeout(resolve, 600))
+    await route.continue()
+  })
   await code.fill('function setup() { createCanvas(100, 100); background(200); noLoop(); }')
   await page.getByRole('button', { name: 'Run code', exact: true }).click()
   await expect(drawButton(page)).toBeDisabled()
   await expect(surface(page)).toHaveCount(0)
   await page.getByRole('button', { name: 'Reset original code', exact: true }).click()
   await expect(drawButton(page)).toBeEnabled()
+  await page.waitForTimeout(700)
+  await expect(page.locator('.squiggle-canvas__art')).toBeVisible()
+  expect(errors).toEqual([])
 })
 
 test('drawing tools fit narrow and landscape layouts with and without code', async ({ page }) => {
