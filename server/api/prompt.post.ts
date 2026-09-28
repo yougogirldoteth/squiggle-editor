@@ -4,5 +4,5 @@ const handlePrompt = createPromptHandler()
 
 export default defineEventHandler(event => {
   const config = useRuntimeConfig(event)
-  return handlePrompt(event, { apiKey: config.openaiApiKey, model: config.promptModel })
+  return handlePrompt(event, { apiKey: config.openaiApiKey, model: config.promptModel, budgetDirectory: config.promptBudgetDirectory })
 })

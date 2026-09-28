@@ -10,7 +10,9 @@ npm run build
 node .output/server/index.mjs
 ```
 
-The production server defaults to port 3000. `/health` returns `{"status":"ok","service":"squiggle-editor"}`. The application is stateless: no database, application secrets, persistent uploads, migrations, or external API access are needed. The browser holds drafts in memory and writes artwork settings to the URL.
+The production server defaults to port 3000. `/health` returns `{"status":"ok","service":"squiggle-editor"}`. The editor needs no database or migrations. The browser holds drafts in memory and writes artwork settings to the URL.
+
+Optional Prompt mode needs a private `NUXT_OPENAI_API_KEY` supplied at runtime and outbound HTTPS access to OpenAI. Set `NUXT_PROMPT_BUDGET_DIRECTORY` to a writable persistent directory, shared by every app instance, so the 200-attempt daily limit survives restarts and rolling deployments. In Docker, mount that directory as a volume writable by the image's `node` user (UID 1000). Without a key, the rest of the editor still works. See [Prompt mode setup and limits](prompt-mode.md).
 
 The [Dockerfile](../Dockerfile) uses Node.js 24.14.0, installs locked dependencies, and copies only the Nuxt output into a non-root runtime image:
 

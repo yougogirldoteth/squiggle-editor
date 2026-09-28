@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createServer, request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createApp, eventHandler, toNodeListener } from 'h3'
 import { DEFAULT_HASH, parseHash } from '../app/utils/squiggle'
 import { describePromptHash } from '../app/utils/promptRecipe'
@@ -175,14 +178,18 @@ describe('prompt request limits', () => {
 
 describe('prompt HTTP handler', () => {
   let server: Server | undefined
+  let budgetDirectory: string | undefined
   afterEach(async () => {
     server?.closeAllConnections()
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()))
     server = undefined
+    if (budgetDirectory) rmSync(budgetDirectory, { recursive: true, force: true })
+    budgetDirectory = undefined
   })
   async function start(apiKey = 'test-key', request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(completion))) {
     const handler = createPromptHandler(request)
-    const app = createApp().use('/api/prompt', eventHandler(event => handler(event, { ...config, apiKey })))
+    budgetDirectory = mkdtempSync(join(tmpdir(), 'squiggle-prompt-'))
+    const app = createApp().use('/api/prompt', eventHandler(event => handler(event, { ...config, apiKey, budgetDirectory: budgetDirectory! })))
     server = createServer(toNodeListener(app))
     await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve))
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -205,6 +212,14 @@ describe('prompt HTTP handler', () => {
 
   it('does not call the provider without a key', async () => {
     const { send, request } = await start('')
+    expect((await send()).status).toBe(503)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('does not spend tokens when the persistent budget cannot be written', async () => {
+    const { send, request } = await start()
+    rmSync(budgetDirectory!, { recursive: true })
+    writeFileSync(budgetDirectory!, '')
     expect((await send()).status).toBe(503)
     expect(request).not.toHaveBeenCalled()
   })

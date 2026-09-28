@@ -4,6 +4,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     openaiApiKey: '',
     promptModel: 'gpt-6-luna',
+    promptBudgetDirectory: '.data/prompt-budget',
   },
   modules: ['nuxt-og-image'],
   site: { url: 'https://squiggle.worldcomputer.art' },

@@ -8,6 +8,7 @@ outputs
 node_modules
 .nuxt
 .output
+.data
 test-results
 playwright-report
 tests

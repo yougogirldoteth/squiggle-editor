@@ -1,5 +1,6 @@
 import { createError, getRequestIP, getRequestURL, setResponseHeaders, type H3Event } from 'h3'
 import { createPromptLimiter, generatePrompt, parsePromptInput, PromptError } from './prompt'
+import { createPromptBudget } from './promptBudget'
 
 function readPromptBody(event: H3Event): Promise<unknown> {
   const req = event.node.req
@@ -34,7 +35,9 @@ function readPromptBody(event: H3Event): Promise<unknown> {
 }
 
 export function createPromptHandler(request: typeof fetch = fetch, acquire = createPromptLimiter()) {
-  return async (event: H3Event, config: { apiKey: string; model: string }) => {
+  let budgetDirectory: string | undefined
+  let reserveBudget: (() => void) | undefined
+  return async (event: H3Event, config: { apiKey: string; model: string; budgetDirectory: string }) => {
     setResponseHeaders(event, { 'cache-control': 'no-store' })
     const controller = new AbortController()
     const disconnect = () => { if (!event.node.res.writableEnded) controller.abort() }
@@ -50,7 +53,16 @@ export function createPromptHandler(request: typeof fetch = fetch, acquire = cre
       // Behind a proxy this is a conservative shared limit until configured otherwise.
       const address = getRequestIP(event) ?? 'unknown'
       event.node.res.once('close', disconnect)
-      return await generatePrompt(input, config, controller.signal, request, () => acquire(address))
+      if (!reserveBudget || budgetDirectory !== config.budgetDirectory) {
+        budgetDirectory = config.budgetDirectory
+        reserveBudget = createPromptBudget(budgetDirectory)
+      }
+      return await generatePrompt(input, config, controller.signal, request, () => {
+        const release = acquire(address)
+        try { reserveBudget!() }
+        catch (error) { release(); throw error }
+        return release
+      })
     } catch (error) {
       const safe = error instanceof PromptError ? error : new PromptError(500, 'Prompt mode is unavailable right now.')
       if (safe.retryAfter) setResponseHeaders(event, { 'retry-after': safe.retryAfter })
