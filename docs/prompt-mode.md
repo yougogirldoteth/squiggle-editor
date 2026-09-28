@@ -12,7 +12,7 @@ All other editor features work without a key. Prompt requests return an unavaila
 
 ## Data and limits
 
-Each generation sends the entered prompt and the current artwork's decoded shape, style, and color parameters to OpenAI. Requests use `store: false`; OpenAI's API data policies still apply. The app does not persist prompts or include them in links. It returns only a validated hash and a flag indicating an approximate palette, and does not expose provider error bodies to the browser.
+Each generation sends the entered prompt and the current artwork's decoded shape, style, color, and texture parameters to OpenAI. Requests use `store: false`; OpenAI's API data policies still apply. The app does not persist prompts or include them in links. It returns only a validated hash and a flag indicating an approximate palette, and does not expose provider error bodies to the browser.
 
 The endpoint accepts same-origin JSON requests with prompts up to 600 characters and bodies up to 8 KiB. It permits two concurrent calls, four attempts per minute per network address, and 200 attempts per UTC day **per server process**, counting provider failures. These counters reset when the process restarts; they are abuse guards, not a persistent billing budget. Caller-supplied `X-Forwarded-For` is ignored, so visitors behind a reverse proxy share its address limit.
 
@@ -20,4 +20,4 @@ Before enabling this on a public deployment, configure project spending controls
 
 ## Fidelity
 
-The model chooses 13–21 uniformly spaced vertical controls, a height within the original range, one of the six styles, and a hue progression. The encoder rounds these to valid hash bytes and retains groups the model leaves unchanged. A request for one narrow color family can exceed the script's limits, especially for Fuzzy; the editor reports when it uses the closest attainable palette. Generated results remain approximations, and cannot create closed loops, literal lettering, or colors outside the original algorithm.
+New subjects choose shape, palette, and style together. Refinements preserve the groups they do not change. The model can choose 13–21 uniformly spaced vertical controls, a height within the original range, one of the six styles, starting hue, hue spread, Reverse, Hyper, and Ribbed spacing and grayscale. Background and playback speed remain manual controls. The encoder rounds these to valid hash bytes and retains groups the model leaves unchanged. A request for one narrow color family can exceed the script's limits, especially for Fuzzy; the editor reports when it uses the closest attainable palette. Generated results remain approximations, and cannot create closed loops, literal lettering, or colors outside the original algorithm.

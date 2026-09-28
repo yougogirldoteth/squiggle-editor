@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyPromptRecipe, describePromptHash, parsePromptRecipe, type PromptRecipe } from '../app/utils/promptRecipe'
 import { buildGeometry, decodeHash, DEFAULT_HASH, parseHash, setByte, setType, TYPES, visibleStartHue } from '../app/utils/squiggle'
 
-const unchanged: PromptRecipe = { shape: null, style: null, color: null }
+const unchanged: PromptRecipe = { shape: null, style: null, color: null, texture: null }
 
 describe('prompt recipes', () => {
   it('preserves every byte for an empty refinement', () => {
@@ -37,7 +37,7 @@ describe('prompt recipes', () => {
   })
 
   it.each([false, true])('encodes a requested visible starting hue with reverse=%s', reverse => {
-    const { hash } = applyPromptRecipe(DEFAULT_HASH, { ...unchanged, color: { startHue: 220, hueSpan: 60, reverse } })
+    const { hash } = applyPromptRecipe(DEFAULT_HASH, { ...unchanged, color: { startHue: 220, hueSpan: 60, reverse, hyper: null } })
     const traits = decodeHash(hash)
     expect(traits.reverse).toBe(reverse)
     expect(visibleStartHue(traits) * 360 / 255).toBeCloseTo(220, 0)
@@ -46,7 +46,7 @@ describe('prompt recipes', () => {
   })
 
   it('uses the new style and shape to choose the closest attainable palette', () => {
-    const recipe = { shape: { points: Array(13).fill(0), tallness: 0.7 }, style: 'Slinky', color: { startHue: 200, hueSpan: 25, reverse: false } }
+    const recipe = { shape: { points: Array(13).fill(0), tallness: 0.7 }, style: 'Slinky', texture: null, color: { startHue: 200, hueSpan: 25, reverse: false, hyper: null } }
     const result = applyPromptRecipe(DEFAULT_HASH, recipe)
     const color = describePromptHash(result.hash).color
     expect(color.hueSpan).toBeCloseTo(25, 0)
@@ -58,20 +58,60 @@ describe('prompt recipes', () => {
   })
 
   it('reports palettes the original script cannot represent rather than changing the renderer', () => {
-    const result = applyPromptRecipe(DEFAULT_HASH, { ...unchanged, style: 'Fuzzy', color: { startHue: 220, hueSpan: 0, reverse: false } })
+    const result = applyPromptRecipe(DEFAULT_HASH, { ...unchanged, style: 'Fuzzy', color: { startHue: 220, hueSpan: 0, reverse: false, hyper: null } })
     expect(result.colorLimited).toBe(true)
     expect(parseHash(result.hash)[28]).toBe(255)
     expect(describePromptHash(result.hash).color.hueSpan).toBeGreaterThan(280)
+  })
+
+  it.each(TYPES)('toggles Hyper for %s without changing its shape, type, or starting hue', style => {
+    const original = setByte(setByte(setType(DEFAULT_HASH, style), 30, 0), 28, 255)
+    const color = describePromptHash(original).color
+    const enabled = applyPromptRecipe(original, { ...unchanged, color: { ...color, hyper: true } })
+    expect(decodeHash(enabled.hash).hyper).toBe(true)
+    expect(enabled.colorLimited).toBe(false)
+    expect(parseHash(enabled.hash).filter((_byte, index) => index !== 28)).toEqual(parseHash(original).filter((_byte, index) => index !== 28))
+    const disabled = applyPromptRecipe(enabled.hash, { ...unchanged, color: { ...color, hyper: false } })
+    expect(disabled.hash).toBe(original)
+  })
+
+  it.each([3, 4, 5])('sets Ribbed spacing %s and grayscale without changing shape or palette', spacing => {
+    const original = setType(DEFAULT_HASH, 'Ribbed')
+    const result = applyPromptRecipe(original, { ...unchanged, texture: { spacing, ribGray: 0.25 } })
+    const geometry = buildGeometry(result.hash, 900, 600)
+    expect(geometry.traits.type).toBe('Ribbed')
+    expect(geometry.traits.bytes[25]).toBe(64)
+    expect(geometry.points[spacing]!.isSegmentMarker).toBe(true)
+    expect(geometry.points[spacing - 1]!.isSegmentMarker).toBe(false)
+    expect(parseHash(result.hash).filter((_byte, index) => ![24, 25].includes(index))).toEqual(parseHash(original).filter((_byte, index) => ![24, 25].includes(index)))
+  })
+
+  it('selects Ribbed for a rib refinement while preserving its unspecified texture field', () => {
+    for (const style of TYPES) {
+      const original = setType(DEFAULT_HASH, style)
+      const gray = applyPromptRecipe(original, { ...unchanged, texture: { spacing: null, ribGray: 1 } }).hash
+      expect(decodeHash(gray).type).toBe('Ribbed')
+      expect(parseHash(gray)[24]).toBe(parseHash(setType(original, 'Ribbed'))[24])
+      const spaced = applyPromptRecipe(original, { ...unchanged, texture: { spacing: 3, ribGray: null } }).hash
+      expect(parseHash(spaced)[25]).toBe(parseHash(original)[25])
+      expect(applyPromptRecipe(original, { ...unchanged, texture: { spacing: null, ribGray: null } }).hash).toBe(original)
+    }
   })
 
   it.each([
     null, [], {}, { ...unchanged, code: 'alert(1)' }, { ...unchanged, style: 'Other' },
     ...[NaN, Infinity, -0.01, 1.01, '1'].map(tallness => ({ ...unchanged, shape: { points: Array(13).fill(0), tallness } })),
     ...[Array(12).fill(0), Array(22).fill(0), Array(13).fill(2), Array(13), Array(13).fill('0')].map(points => ({ ...unchanged, shape: { points, tallness: 1 } })),
-    { ...unchanged, color: { startHue: -1, hueSpan: 30, reverse: false } },
-    { ...unchanged, color: { startHue: 200, hueSpan: 60001, reverse: false } },
+    { ...unchanged, color: { startHue: -1, hueSpan: 30, reverse: false, hyper: null } },
+    { ...unchanged, color: { startHue: 200, hueSpan: 60001, reverse: false, hyper: null } },
     { ...unchanged, color: { startHue: 200, hueSpan: 30, reverse: 'false' } },
     { ...unchanged, color: { startHue: 200, hueSpan: 30, reverse: false, extra: true } },
+    { ...unchanged, color: { startHue: 200, hueSpan: 30, reverse: false, hyper: 'true' } },
+    { ...unchanged, texture: { spacing: 3.5, ribGray: null } },
+    { ...unchanged, texture: { spacing: 6, ribGray: null } },
+    { ...unchanged, texture: { spacing: 3, ribGray: -0.1 } },
+    { ...unchanged, texture: { spacing: null, ribGray: Infinity } },
+    { ...unchanged, style: 'Fuzzy', texture: { spacing: 3, ribGray: 0 } },
   ])('rejects malformed, unbounded or executable output %#', recipe => {
     expect(() => parsePromptRecipe(recipe)).toThrow()
   })
