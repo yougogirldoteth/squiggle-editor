@@ -245,7 +245,10 @@ for (const [width, height] of [[320, 568], [375, 667], [440, 956], [480, 320], [
     await field(page).press('Enter')
     await expect(hash(page)).toHaveValue(result.hash)
     for (const withCode of [false, true]) {
-      if (withCode) await page.getByRole('button', { name: 'Code mode', exact: true }).click()
+      if (withCode) {
+        await page.getByRole('button', { name: 'Code mode', exact: true }).click()
+        await expect(page.getByRole('textbox', { name: 'JavaScript source' })).toBeVisible()
+      }
       for (const locator of [field(page), page.getByRole('button', { name: 'Try again' }), page.locator('.stage'), page.locator('.canvas-tools')]) {
         const box = (await locator.boundingBox())!
         expect(box.x).toBeGreaterThanOrEqual(0)

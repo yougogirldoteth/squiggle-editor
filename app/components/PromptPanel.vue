@@ -10,6 +10,7 @@ const busy = ref(false)
 const error = ref(false)
 const message = ref('Fits the original Squiggle algorithm.')
 const lastPrompt = ref('')
+const actionLabel = computed(() => busy.value ? 'Cancel' : lastPrompt.value && draft.value.trim() === lastPrompt.value ? 'Try again' : 'Generate')
 let active: AbortController | undefined
 
 function cancel(text = 'Cancelled. Your squiggle is unchanged.') {
@@ -93,37 +94,50 @@ onBeforeUnmount(() => { active?.abort(); active = undefined })
   <form class="prompt-panel" aria-label="Prompt mode" @submit.prevent="generate" @keydown="keydown">
     <div class="prompt-input-row">
       <label class="sr-only" for="squiggle-prompt">Describe your squiggle</label>
-      <textarea id="squiggle-prompt" ref="field" v-model="draft" rows="2" maxlength="600" :readonly="busy" aria-describedby="prompt-status" placeholder="Two tall loops, a scribbly ending, only blue…" spellcheck="false" />
-      <button ref="action" class="prompt-submit" :class="{ cancel: busy }" type="button" :disabled="!busy && (!draft.trim() || draft.length > 600)" @click="busy ? cancel() : generate()"><span>{{ busy ? 'Cancel' : lastPrompt && draft.trim() === lastPrompt ? 'Try again' : 'Generate' }}</span><EditorIcon v-if="!busy" name="arrow" /></button>
+      <textarea id="squiggle-prompt" ref="field" v-model="draft" rows="2" maxlength="600" :readonly="busy" aria-describedby="prompt-status" placeholder="Describe a shape, color, or texture…" enterkeyhint="send" spellcheck="false" />
+      <button ref="action" class="prompt-submit" :class="{ 'is-busy': busy }" type="button" :aria-label="actionLabel" :title="actionLabel" :disabled="!busy && (!draft.trim() || draft.length > 600)" @click="busy ? cancel() : generate()">
+        <span v-if="busy" class="prompt-stop" aria-hidden="true" />
+        <EditorIcon v-else name="arrow" class="prompt-send" />
+      </button>
     </div>
     <p id="prompt-status" class="prompt-status" :class="{ error }" role="status" aria-live="polite">{{ message }}</p>
   </form>
 </template>
 
 <style scoped>
-.prompt-panel { grid-column: 1 / -1; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-.prompt-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
-textarea { display: block; width: 100%; min-width: 0; height: 44px; padding: 2px 0; resize: none; border: 0; background: transparent; color: #30352e; font-size: 14px; line-height: 20px; caret-color: var(--accent); }
+.prompt-panel { grid-column: 1 / -1; min-width: 0; }
+.prompt-input-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+textarea { display: block; width: 100%; min-width: 0; height: 44px; padding: 2px 0; resize: none; border: 0; border-radius: 0; background: transparent; color: #30352e; font-size: 14px; line-height: 20px; caret-color: var(--accent); }
 textarea:focus-visible { outline: none; }
 textarea::placeholder { color: #8b9384; }
-textarea[readonly] { color: #7b8572; }
-.prompt-submit { display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; min-width: 106px; padding: 0 12px; border-radius: 8px; background: #36432d; color: #fff; font-size: 12px; }
-.prompt-submit:hover:not(:disabled) { background: #536b40; }
-.prompt-submit svg { width: 15px; height: 15px; }
-.prompt-submit.cancel { background: #edf0e7; color: #526047; }
-.prompt-status { margin: 6px 0 0; min-height: 14px; color: #818b76; font-size: 11px; line-height: 14px; }
+.prompt-submit { position: relative; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: #f3f5ef; color: #536b40; opacity: 1; appearance: none; -webkit-appearance: none; }
+/* Touch browsers retain hover after a tap; keep the resting surface consistent. */
+.prompt-submit:hover:not(:disabled) { background: #f3f5ef; }
+.prompt-submit:disabled { color: #a4ac9b; opacity: 1; }
+.prompt-submit:active:not(:disabled) { background: #e7eddc; border-color: #c5d2b8; }
+.prompt-submit:focus-visible { outline: none; border-color: #829d65; box-shadow: inset 0 0 0 1px #829d65; }
+.prompt-submit svg { width: 19px; height: 19px; }
+.prompt-send { transform: rotate(-90deg); }
+.prompt-stop { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
+.prompt-submit.is-busy::after { content: ''; position: absolute; inset: 7px; border: 1px solid #d5ddce; border-top-color: currentColor; border-radius: 50%; animation: prompt-spin 1s linear infinite; }
+.prompt-status { margin: var(--space-2) var(--space-3) 0; min-height: 14px; color: #818b76; font-size: 11px; line-height: 14px; overflow-wrap: anywhere; }
 .prompt-status.error { color: #a34e3b; }
+@keyframes prompt-spin { to { transform: rotate(360deg); } }
+@media (hover: hover) and (pointer: fine) {
+  .prompt-submit:hover:not(:disabled) { background: #e7eddc; border-color: #c5d2b8; }
+}
 @media (max-width: 650px) {
-  .prompt-panel { padding: 10px 12px; }
-  .prompt-input-row { gap: 8px; }
+  .prompt-input-row { gap: var(--space-2); }
   textarea { font-size: 16px; }
-  .prompt-submit { min-width: 80px; padding: 0 10px; }
-  .prompt-submit svg { display: none; }
 }
 @media (max-height: 450px) {
-  .prompt-panel { padding: 8px 12px; }
-  textarea { height: 28px; }
-  .prompt-submit { height: 32px; }
-  .prompt-status { margin-top: 4px; }
+  .prompt-input-row { grid-template-columns: minmax(0, 1fr) 40px; padding: var(--space-2) var(--space-3); }
+  textarea { height: 40px; }
+  .prompt-submit { width: 40px; height: 40px; }
+  .prompt-status { margin-top: var(--space-1); min-height: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prompt-submit { transition: none; }
+  .prompt-submit.is-busy::after { animation: none; }
 }
 </style>
