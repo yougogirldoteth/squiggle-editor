@@ -20,6 +20,7 @@ export function parsePromptInput(input: unknown) {
 export function createPromptLimiter(options: { now?: () => number; daily?: number; perMinute?: number; concurrent?: number } = {}) {
   const now = options.now ?? Date.now
   const clients = new Map<string, number[]>()
+  const activeClients = new Set<string>()
   let day = -1, attempts = 0, running = 0
   return (address: string) => {
     const time = now()
@@ -33,12 +34,14 @@ export function createPromptLimiter(options: { now?: () => number; daily?: numbe
     const recent = clients.get(address) ?? []
     if (attempts >= (options.daily ?? 200)) throw new PromptError(429, 'Prompt mode has reached its daily limit. Try again tomorrow.', Math.ceil(((day + 1) * 86400000 - time) / 1000))
     if (recent.length >= (options.perMinute ?? 4)) throw new PromptError(429, 'A few too many prompts. Try again in a minute.', 60)
+    if (activeClients.has(address)) throw new PromptError(429, 'A prompt is already running for this network. Try again shortly.', 10)
     if (running >= (options.concurrent ?? 2)) throw new PromptError(429, 'Prompt mode is busy. Try again shortly.', 10)
     attempts++
     running++
+    activeClients.add(address)
     clients.set(address, [...recent, time])
     let released = false
-    return () => { if (!released) { running--; released = true } }
+    return () => { if (!released) { running--; activeClients.delete(address); released = true } }
   }
 }
 

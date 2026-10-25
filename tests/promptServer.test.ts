@@ -160,6 +160,15 @@ describe('prompt provider boundary', () => {
 })
 
 describe('prompt request limits', () => {
+  it('leaves the second concurrent slot available to another network', () => {
+    const acquire = createPromptLimiter()
+    const first = acquire('a')
+    expect(() => acquire('a')).toThrow('already running')
+    const second = acquire('b')
+    expect(() => acquire('c')).toThrow('busy')
+    first(); second()
+    acquire('a')()
+  })
   it('limits per-address attempts, concurrency and total daily attempts, including failures', () => {
     let time = 100000
     const acquire = createPromptLimiter({ now: () => time, perMinute: 2, concurrent: 1, daily: 3 })
@@ -186,10 +195,10 @@ describe('prompt HTTP handler', () => {
     if (budgetDirectory) rmSync(budgetDirectory, { recursive: true, force: true })
     budgetDirectory = undefined
   })
-  async function start(apiKey = 'test-key', request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(completion))) {
+  async function start(apiKey = 'test-key', request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(completion)), trustedProxies = '') {
     const handler = createPromptHandler(request)
     budgetDirectory = mkdtempSync(join(tmpdir(), 'squiggle-prompt-'))
-    const app = createApp().use('/api/prompt', eventHandler(event => handler(event, { ...config, apiKey, budgetDirectory: budgetDirectory! })))
+    const app = createApp().use('/api/prompt', eventHandler(event => handler(event, { ...config, apiKey, budgetDirectory: budgetDirectory!, trustedProxies })))
     server = createServer(toNodeListener(app))
     await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve))
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -253,6 +262,15 @@ describe('prompt HTTP handler', () => {
     expect(response.status).toBe(429)
     expect(response.headers.get('retry-after')).toBe('60')
     expect(request).toHaveBeenCalledTimes(4)
+  })
+
+  it('separates clients behind the trusted proxy without accepting forged prefixes', async () => {
+    const { send, request } = await start('test-key', undefined, '127.0.0.1')
+    for (let i = 0; i < 4; i++) expect((await send(input, { 'x-forwarded-for': `192.0.2.${i}, 198.51.100.1` })).status).toBe(200)
+    expect((await send(input, { 'x-forwarded-for': '203.0.113.1, 198.51.100.1' })).status).toBe(429)
+    expect((await send(input, { 'x-forwarded-for': '198.51.100.2' })).status).toBe(200)
+    expect((await send()).status).toBe(503)
+    expect(request).toHaveBeenCalledTimes(5)
   })
 
   it('counts corrections against the HTTP caller’s provider-attempt limit', async () => {

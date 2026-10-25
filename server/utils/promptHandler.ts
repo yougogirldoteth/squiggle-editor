@@ -1,6 +1,7 @@
-import { createError, getRequestIP, getRequestURL, setResponseHeaders, type H3Event } from 'h3'
+import { createError, getRequestURL, setResponseHeaders, type H3Event } from 'h3'
 import { createPromptLimiter, generatePrompt, parsePromptInput, PromptError } from './prompt'
 import { createPromptBudget } from './promptBudget'
+import { promptClient } from './promptClient'
 
 function readPromptBody(event: H3Event): Promise<unknown> {
   const req = event.node.req
@@ -36,8 +37,8 @@ function readPromptBody(event: H3Event): Promise<unknown> {
 
 export function createPromptHandler(request: typeof fetch = fetch, acquire = createPromptLimiter()) {
   let budgetDirectory: string | undefined
-  let reserveBudget: (() => void) | undefined
-  return async (event: H3Event, config: { apiKey: string; model: string; budgetDirectory: string }) => {
+  let reserveBudget: ((client?: string) => void) | undefined
+  return async (event: H3Event, config: { apiKey: string; model: string; budgetDirectory: string; trustedProxies?: string }) => {
     setResponseHeaders(event, { 'cache-control': 'no-store' })
     const controller = new AbortController()
     const disconnect = () => { if (!event.node.res.writableEnded) controller.abort() }
@@ -49,9 +50,7 @@ export function createPromptHandler(request: typeof fetch = fetch, acquire = cre
       if (event.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') throw new PromptError(415, 'Send a JSON prompt.')
       if (!config.apiKey) throw new PromptError(503, 'Prompt mode is not available yet.')
       const input = parsePromptInput(await readPromptBody(event))
-      // Never trust caller-supplied X-Forwarded-For for the per-address limit.
-      // Behind a proxy this is a conservative shared limit until configured otherwise.
-      const address = getRequestIP(event) ?? 'unknown'
+      const address = promptClient(event, config.trustedProxies)
       event.node.res.once('close', disconnect)
       if (!reserveBudget || budgetDirectory !== config.budgetDirectory) {
         budgetDirectory = config.budgetDirectory
@@ -59,7 +58,7 @@ export function createPromptHandler(request: typeof fetch = fetch, acquire = cre
       }
       return await generatePrompt(input, config, controller.signal, request, () => {
         const release = acquire(address)
-        try { reserveBudget!() }
+        try { reserveBudget!(address) }
         catch (error) { release(); throw error }
         return release
       })
