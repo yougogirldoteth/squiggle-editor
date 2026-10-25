@@ -24,7 +24,7 @@
     "@napi-rs/canvas": "^1.0.9",
     "@takumi-rs/core": "^2.14.0",
     "codemirror": "^6.0.2",
-    "nuxt": "4.5.2",
+    "nuxt": "4.6.2",
     "vue": "^3.5.30",
     "vue-router": "^5.0.3"
   },
