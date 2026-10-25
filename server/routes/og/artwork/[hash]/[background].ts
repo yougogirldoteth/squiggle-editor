@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   let png: Buffer
   try { png = await artwork(inputs.hash, inputs.background) }
   catch (error) {
-    setResponseHeaders(event, { 'cache-control': 'no-store', 'retry-after': '60' })
+    setResponseHeaders(event, { 'cache-control': 'no-store', 'retry-after': 60 })
     throw error
   }
   setResponseHeaders(event, {
